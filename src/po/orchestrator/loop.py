@@ -286,6 +286,10 @@ class OrchestratorLoop:
             return
 
         if result.success:
+            # Remove worktree before merge so rebase can check out the branch
+            # (git refuses to check out a branch in another worktree)
+            self.worktree_mgr.remove(result.task_id, self.project_root)
+
             # Try to merge
             branch = str(task["branch_name"])
             verification = (
@@ -306,8 +310,6 @@ class OrchestratorLoop:
                     agent_result=result.result_text,
                     session_id=result.session_id,
                 )
-                # Clean up worktree
-                self.worktree_mgr.remove(result.task_id, self.project_root)
                 cost = f"${result.cost_usd:.4f}" if result.cost_usd else ""
                 self._emit("task_completed", result.task_id, cost)
             else:

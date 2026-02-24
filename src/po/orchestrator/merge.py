@@ -218,6 +218,7 @@ class RebaseMerger:
         cmd = [
             "claude",
             "-p", prompt,
+            "--verbose",
             "--output-format", "stream-json",
             "--max-turns", "30",
         ]
