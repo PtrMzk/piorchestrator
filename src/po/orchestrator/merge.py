@@ -221,6 +221,7 @@ class RebaseMerger:
             "--verbose",
             "--output-format", "stream-json",
             "--max-turns", "30",
+            "--permission-mode", "bypassPermissions",
         ]
 
         result = subprocess.run(

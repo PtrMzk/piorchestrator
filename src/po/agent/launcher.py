@@ -67,6 +67,7 @@ class ClaudeCodeRunner:
             "--output-format", "stream-json",
             "--model", model,
             "--max-turns", str(max_turns),
+            "--permission-mode", "bypassPermissions",
         ]
 
         if max_budget_usd is not None:
