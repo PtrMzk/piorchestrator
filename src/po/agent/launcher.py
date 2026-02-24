@@ -63,6 +63,7 @@ class ClaudeCodeRunner:
         cmd = [
             "claude",
             "-p", prompt,
+            "--verbose",
             "--output-format", "stream-json",
             "--model", model,
             "--max-turns", str(max_turns),
