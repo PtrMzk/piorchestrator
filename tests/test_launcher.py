@@ -180,7 +180,7 @@ class TestClaudeCodeRunner:
             )
 
         cmd_args = mock_exec.call_args[0]
-        assert "--max-cost" in cmd_args
+        assert "--max-budget-usd" in cmd_args
         assert "1.5" in cmd_args
 
     @pytest.mark.asyncio
@@ -201,7 +201,7 @@ class TestClaudeCodeRunner:
             )
 
         cmd_args = mock_exec.call_args[0]
-        assert "--max-cost" not in cmd_args
+        assert "--max-budget-usd" not in cmd_args
 
     @pytest.mark.asyncio
     async def test_log_file_written(self, tmp_path: Path) -> None:

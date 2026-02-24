@@ -69,7 +69,7 @@ class ClaudeCodeRunner:
         ]
 
         if max_budget_usd is not None:
-            cmd.extend(["--max-cost", str(max_budget_usd)])
+            cmd.extend(["--max-budget-usd", str(max_budget_usd)])
 
         logger.debug("Running agent for %s: %s", task_id, " ".join(cmd[:6]))
 
