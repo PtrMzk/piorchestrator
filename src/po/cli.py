@@ -21,6 +21,7 @@ from po.display.status import (
 )
 from po.docs.generator import generate_doc_tree
 from po.graph.resolver import get_execution_plan
+from po.init.generator import generate_spec
 from po.orchestrator.loop import OrchestratorLoop
 from po.playground.generator import generate_playground
 from po.scaffold.generator import generate_scaffolds
@@ -161,6 +162,23 @@ def main() -> None:
         help="Project root directory",
     )
 
+    # po init
+    init_parser = subparsers.add_parser(
+        "init", help="Generate a spec file from a plain English description",
+    )
+    init_parser.add_argument(
+        "description", type=str,
+        help="Plain English project description",
+    )
+    init_parser.add_argument(
+        "-o", "--output", type=Path, default=Path("spec.json"),
+        help="Output file path (default: spec.json)",
+    )
+    init_parser.add_argument(
+        "--model", type=str, default="sonnet",
+        help="Claude model to use (default: sonnet)",
+    )
+
     args = parser.parse_args()
     _configure_logging(
         verbose=getattr(args, "verbose", False),
@@ -181,6 +199,8 @@ def main() -> None:
         cmd_logs(args)
     elif args.command == "clean":
         cmd_clean(args)
+    elif args.command == "init":
+        cmd_init(args)
 
 
 def cmd_plan(args: argparse.Namespace) -> None:
@@ -529,3 +549,29 @@ def cmd_clean(args: argparse.Namespace) -> None:
             removed += 1
 
     print(f"Cleaned {removed} worktree(s).")
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    """Generate a spec file from a plain English description."""
+    output: Path = args.output
+    model: str = args.model
+    description: str = args.description
+
+    print(f"Generating spec from description (model={model})...")
+    try:
+        path = generate_spec(description, output, model)
+    except FileExistsError as e:
+        logger.error("%s", e)
+        sys.exit(1)
+    except ValueError as e:
+        logger.error("%s", e)
+        sys.exit(1)
+    except RuntimeError as e:
+        logger.error("%s", e)
+        sys.exit(1)
+
+    print(f"Spec written to {path}")
+    print()
+    print("Next steps:")
+    print(f"  po plan {path}        # review the execution plan")
+    print(f"  po run {path}         # run the orchestration")
