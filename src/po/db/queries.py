@@ -29,6 +29,7 @@ class TaskStore(Protocol):
     def get_task(self, task_id: str) -> dict[str, Any] | None: ...
     def get_all_tasks(self) -> list[dict[str, Any]]: ...
     def set_status(self, task_id: str, status: str) -> None: ...
+    def increment_attempt(self, task_id: str) -> None: ...
     def set_running(
         self, task_id: str, worktree_path: str, branch_name: str,
     ) -> None: ...
@@ -163,6 +164,14 @@ class SqliteTaskStore:
         self.conn.execute(
             "UPDATE tasks SET status = ? WHERE id = ?",
             (status, task_id),
+        )
+        self.conn.commit()
+
+    def increment_attempt(self, task_id: str) -> None:
+        """Increment the attempt counter for a task."""
+        self.conn.execute(
+            "UPDATE tasks SET attempt = attempt + 1 WHERE id = ?",
+            (task_id,),
         )
         self.conn.commit()
 

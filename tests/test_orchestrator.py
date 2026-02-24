@@ -158,6 +158,46 @@ class TestOrchestratorLoop:
         assert max_concurrent <= 2
 
     @pytest.mark.asyncio
+    async def test_retry_terminates_on_pre_set_running_failure(self, tmp_path: Path) -> None:
+        """Tasks that fail before set_running (e.g. worktree creation) must not retry forever."""
+        spec_dict = {
+            "project_name": "retry-test",
+            "tasks": [
+                {"id": "t1", "description": "A", "output_files": ["a.py"]},
+            ],
+        }
+        spec = ProjectSpec.from_dict(spec_dict)
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        db_path = project_root / ".po" / "state.db"
+        conn = init_db(db_path)
+        store = SqliteTaskStore(conn)
+        store.save_spec(spec)
+
+        class FailingWorktree(MockWorktreeProvider):
+            def create(self, task_id, project_root):
+                raise RuntimeError("Worktree creation failed")
+
+        orch = OrchestratorLoop(
+            store=store,
+            project_root=project_root,
+            max_concurrency=1,
+            worktree_manager=FailingWorktree(tmp_path / "wt"),
+            agent_runner=MockAgentRunner(),
+            merger=MockMergeStrategy(),
+            max_retries=1,
+        )
+
+        await orch.run()
+
+        task = store.get_task("t1")
+        assert task is not None
+        assert task["status"] == "failed", f"Expected failed, got {task['status']}"
+        # Should have attempted twice: initial + 1 retry
+        assert task["attempt"] == 2
+
+    @pytest.mark.asyncio
     async def test_output_overlap_serialization(self, tmp_path: Path) -> None:
         """Tasks with overlapping output_files should not run concurrently."""
         spec_dict = {

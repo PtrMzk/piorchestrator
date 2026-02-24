@@ -96,3 +96,46 @@ class TestGitWorktreeManager:
 
         assert not (info1.path / "file2.txt").exists()
         assert not (info2.path / "file1.txt").exists()
+
+    def test_create_in_dir_without_git(self, tmp_path: Path) -> None:
+        """Worktree creation should auto-init a git repo if none exists."""
+        project = tmp_path / "no-git-project"
+        project.mkdir()
+        mgr = GitWorktreeManager()
+        info = mgr.create("task-1", project)
+        assert info.path.exists()
+        # Verify the project root is now a git repo
+        result = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+
+    def test_create_in_empty_git_repo(self, tmp_path: Path) -> None:
+        """Worktree creation should handle a git repo with no commits."""
+        project = tmp_path / "empty-repo"
+        project.mkdir()
+        subprocess.run(
+            ["git", "init"], cwd=project, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=project, capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=project, capture_output=True, check=True,
+        )
+        mgr = GitWorktreeManager()
+        info = mgr.create("task-1", project)
+        assert info.path.exists()
+        # Verify an initial commit was created
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0

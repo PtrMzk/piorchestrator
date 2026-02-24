@@ -349,7 +349,12 @@ class OrchestratorLoop:
                 )
                 return
 
-            # Check retry
+            # Check retry — if failure happened before set_running (e.g.
+            # worktree creation failed), the attempt counter was never
+            # incremented.  Detect this by checking if status is still pending.
+            if task["status"] == STATUS_PENDING:
+                self.store.increment_attempt(result.task_id)
+                task = self.store.get_task(result.task_id) or task
             attempt = int(task["attempt"])
             if attempt <= self.max_retries:
                 self.store.set_status(result.task_id, STATUS_PENDING)
