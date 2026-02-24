@@ -199,6 +199,9 @@ class MockWorktreeProvider:
         self._worktrees[task_id] = info
         return info
 
+    def detach(self, task_id: str, project_root: Path) -> None:
+        pass  # No-op for mock — worktree dir doesn't matter
+
     def remove(self, task_id: str, project_root: Path) -> None:
         self._worktrees.pop(task_id, None)
 

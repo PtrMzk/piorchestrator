@@ -286,9 +286,10 @@ class OrchestratorLoop:
             return
 
         if result.success:
-            # Remove worktree before merge so rebase can check out the branch
-            # (git refuses to check out a branch in another worktree)
-            self.worktree_mgr.remove(result.task_id, self.project_root)
+            # Detach worktree before merge so rebase can check out the branch
+            # (git refuses to check out a branch in another worktree).
+            # Keep the branch — it's needed for the merge.
+            self.worktree_mgr.detach(result.task_id, self.project_root)
 
             # Try to merge
             branch = str(task["branch_name"])
@@ -301,6 +302,9 @@ class OrchestratorLoop:
                 verification=verification,
                 project_root=self.project_root,
             )
+
+            # Clean up the branch now that merge is done (success or fail)
+            self.worktree_mgr.remove(result.task_id, self.project_root)
 
             if merge_result.success:
                 self.store.set_completed(

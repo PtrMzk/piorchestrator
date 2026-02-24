@@ -14,6 +14,7 @@ class WorktreeProvider(Protocol):
     """Protocol for worktree management."""
 
     def create(self, task_id: str, project_root: Path) -> WorktreeInfo: ...
+    def detach(self, task_id: str, project_root: Path) -> None: ...
     def remove(self, task_id: str, project_root: Path) -> None: ...
     def list(self, project_root: Path) -> list[WorktreeInfo]: ...
     def exists(self, task_id: str, project_root: Path) -> bool: ...
@@ -134,11 +135,14 @@ class GitWorktreeManager:
 
         return WorktreeInfo(task_id=task_id, path=wt_path, branch=branch)
 
-    def remove(self, task_id: str, project_root: Path) -> None:
-        """Remove a worktree and its branch."""
-        wt_path = self._worktree_path(task_id, project_root)
-        branch = self._branch_name(task_id)
+    def detach(self, task_id: str, project_root: Path) -> None:
+        """Remove the worktree directory but keep the branch.
 
+        Use this before merging so that ``git rebase`` / ``git checkout``
+        can access the branch (git refuses to check out a branch that is
+        already checked out in another worktree).
+        """
+        wt_path = self._worktree_path(task_id, project_root)
         if wt_path.exists():
             subprocess.run(
                 ["git", "worktree", "remove", "--force", str(wt_path)],
@@ -148,7 +152,12 @@ class GitWorktreeManager:
                 check=False,
             )
 
+    def remove(self, task_id: str, project_root: Path) -> None:
+        """Remove a worktree and its branch."""
+        self.detach(task_id, project_root)
+
         # Delete the branch
+        branch = self._branch_name(task_id)
         subprocess.run(
             ["git", "branch", "-D", branch],
             cwd=project_root,
