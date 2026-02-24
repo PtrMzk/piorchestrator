@@ -1,0 +1,94 @@
+{
+  "project_name": "todo-api",
+  "description": "REST API for a todo list using Python and FastAPI",
+  "default_model": "sonnet",
+  "max_concurrency": 3,
+  "global_context": "Use Python 3.12, FastAPI, and SQLite for storage. Follow standard project layout with src/ directory.",
+  "global_context_files": ["README.md"],
+  "tasks": [
+    {
+      "id": "init-project",
+      "description": "Create pyproject.toml with FastAPI and uvicorn dependencies, create src/app/__init__.py and src/app/main.py with a basic FastAPI app that returns {\"status\": \"ok\"} on GET /health",
+      "dependencies": [],
+      "context_files": [],
+      "output_files": ["pyproject.toml", "src/app/__init__.py", "src/app/main.py"],
+      "verification": "python -c \"from app.main import app; print('OK')\"",
+      "priority": 10,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["setup"]
+    },
+    {
+      "id": "define-models",
+      "description": "Create src/app/models.py with Pydantic models: TodoCreate (title: str, description: str = ''), TodoUpdate (title: str | None, description: str | None, completed: bool | None), TodoResponse (id: int, title: str, description: str, completed: bool, created_at: datetime)",
+      "dependencies": ["init-project"],
+      "context_files": [],
+      "output_files": ["src/app/models.py"],
+      "verification": "python -c \"from app.models import TodoCreate, TodoUpdate, TodoResponse; print('OK')\"",
+      "priority": 9,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["models"]
+    },
+    {
+      "id": "define-db",
+      "description": "Create src/app/database.py with SQLite connection management using sqlite3 stdlib. Create a todos table with columns: id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT DEFAULT '', completed BOOLEAN DEFAULT FALSE, created_at TEXT DEFAULT CURRENT_TIMESTAMP. Provide functions: init_db(), get_db() -> sqlite3.Connection",
+      "dependencies": ["init-project"],
+      "context_files": [],
+      "output_files": ["src/app/database.py"],
+      "verification": "python -c \"from app.database import init_db; print('OK')\"",
+      "priority": 9,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["database"]
+    },
+    {
+      "id": "crud-create",
+      "description": "Add a POST /todos endpoint to src/app/main.py that accepts TodoCreate, inserts into the database, and returns TodoResponse with status 201",
+      "dependencies": ["define-models", "define-db"],
+      "context_files": ["src/app/models.py", "src/app/database.py"],
+      "output_files": ["src/app/main.py"],
+      "verification": "python -c \"from app.main import app; print('OK')\"",
+      "priority": 8,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["api", "crud"]
+    },
+    {
+      "id": "crud-list",
+      "description": "Add a GET /todos endpoint to src/app/main.py that returns a list of all TodoResponse objects",
+      "dependencies": ["define-models", "define-db"],
+      "context_files": ["src/app/models.py", "src/app/database.py"],
+      "output_files": ["src/app/main.py"],
+      "verification": "python -c \"from app.main import app; print('OK')\"",
+      "priority": 7,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["api", "crud"]
+    },
+    {
+      "id": "crud-update",
+      "description": "Add a PATCH /todos/{todo_id} endpoint to src/app/main.py that accepts TodoUpdate and returns the updated TodoResponse. Return 404 if not found.",
+      "dependencies": ["crud-create"],
+      "context_files": ["src/app/models.py", "src/app/database.py"],
+      "output_files": ["src/app/main.py"],
+      "verification": "python -c \"from app.main import app; print('OK')\"",
+      "priority": 6,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["api", "crud"]
+    },
+    {
+      "id": "crud-delete",
+      "description": "Add a DELETE /todos/{todo_id} endpoint to src/app/main.py that deletes a todo and returns 204. Return 404 if not found.",
+      "dependencies": ["crud-create"],
+      "context_files": ["src/app/models.py", "src/app/database.py"],
+      "output_files": ["src/app/main.py"],
+      "verification": "python -c \"from app.main import app; print('OK')\"",
+      "priority": 6,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["api", "crud"]
+    }
+  ]
+}
