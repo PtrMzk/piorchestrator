@@ -70,12 +70,20 @@ class RebaseMerger:
         project_root: Path,
     ) -> MergeResult:
         """Synchronous merge logic."""
+        # Ensure clean state on main before merging
+        self._run_git(["checkout", "main"], project_root)
+        self._run_git(["reset", "--hard", "HEAD"], project_root)
+        self._run_git(["clean", "-fd"], project_root)
+
         # Step 1: Rebase task branch onto main
         logger.debug("Rebasing %s onto main", branch)
         result = self._run_git(["rebase", "main", branch], project_root)
         if result.returncode != 0:
             # Abort the failed rebase
-            logger.info("Rebase failed for %s, attempting agent merge", task_id)
+            logger.info(
+                "Rebase failed for %s (stderr: %s), attempting agent merge",
+                task_id, result.stderr.strip(),
+            )
             self._run_git(["rebase", "--abort"], project_root)
             # Try merge agent resolution
             return self._try_agent_merge(branch, task_id, project_root, verification)

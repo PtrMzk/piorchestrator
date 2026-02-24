@@ -151,6 +151,14 @@ class GitWorktreeManager:
                 text=True,
                 check=False,
             )
+        # Prune so git no longer considers the branch checked out elsewhere
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
     def remove(self, task_id: str, project_root: Path) -> None:
         """Remove a worktree and its branch."""
