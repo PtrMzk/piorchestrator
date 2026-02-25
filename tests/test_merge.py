@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import io
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from po.orchestrator.merge import MergeResult, RebaseMerger
+
+
+def _make_mock_popen(returncode: int = 0, stdout: bytes = b"") -> MagicMock:
+    """Create a mock Popen that behaves like the real one for streaming."""
+    proc = MagicMock()
+    proc.stdout = io.BytesIO(stdout)
+    proc.stderr = io.BytesIO(b"")
+    proc.wait.return_value = returncode
+    proc.returncode = returncode
+    proc.__enter__ = lambda s: s
+    proc.__exit__ = lambda s, *a: None
+    return proc
 
 
 def _git(args: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -293,15 +306,15 @@ class TestInvokeMergeAgent:
         _commit_file(git_repo, "README.md", "cli-fail main\n", "Main for cli-fail")
         _git(["merge", "--no-ff", "--no-commit", "po/cli-fail"], git_repo, check=False)
 
-        original_subprocess_run = subprocess.run
+        mock_proc = _make_mock_popen(returncode=1)
+        real_popen = subprocess.Popen
 
-        def side_effect(*args, **kwargs):
-            cmd = args[0] if args else kwargs.get("args", [])
+        def selective_popen(cmd, **kwargs):
             if cmd[0] == "claude":
-                return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="error")
-            return original_subprocess_run(*args, **kwargs)
+                return mock_proc
+            return real_popen(cmd, **kwargs)
 
-        with patch("subprocess.run", side_effect=side_effect):
+        with patch("po.orchestrator.merge.subprocess.Popen", side_effect=selective_popen):
             result = merger._invoke_merge_agent("cli-fail", "po/cli-fail", git_repo)
             assert result is False
 
@@ -313,19 +326,18 @@ class TestInvokeMergeAgent:
         _commit_file(git_repo, "README.md", "prompt main\n", "Main for prompt")
         _git(["merge", "--no-ff", "--no-commit", "po/prompt-check"], git_repo, check=False)
 
+        mock_proc = _make_mock_popen(returncode=1)
+        real_popen = subprocess.Popen
         captured_cmd: list[str] = []
-        original_subprocess_run = subprocess.run
 
-        def side_effect(*args, **kwargs):
-            cmd = args[0] if args else kwargs.get("args", [])
+        def selective_popen(cmd, **kwargs):
             if cmd[0] == "claude":
                 captured_cmd.extend(cmd)
-                return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="")
-            return original_subprocess_run(*args, **kwargs)
+                return mock_proc
+            return real_popen(cmd, **kwargs)
 
-        with patch("subprocess.run", side_effect=side_effect):
+        with patch("po.orchestrator.merge.subprocess.Popen", side_effect=selective_popen):
             merger._invoke_merge_agent("prompt-check", "po/prompt-check", git_repo)
-
         # The -p flag should be followed by the prompt containing README.md
         assert "-p" in captured_cmd
         prompt_idx = captured_cmd.index("-p") + 1

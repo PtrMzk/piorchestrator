@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
+
+from po.config import logs_dir
 
 logger = logging.getLogger(__name__)
 
@@ -270,15 +274,38 @@ class RebaseMerger:
             "--permission-mode", "bypassPermissions",
         ]
 
-        result = subprocess.run(
+        log_dir = logs_dir(project_root)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / f"merge-{task_id}.jsonl"
+
+        proc = subprocess.Popen(
             cmd,
             cwd=project_root,
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             env=env,
         )
 
-        if result.returncode != 0:
+        assert proc.stdout is not None
+        with open(log_file, "wb") as fh:
+            for raw_line in proc.stdout:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    fh.write(raw_line)
+                    fh.flush()
+                    continue
+                msg["timestamp"] = datetime.now(timezone.utc).isoformat()
+                fh.write(json.dumps(msg).encode())
+                fh.write(b"\n")
+                fh.flush()
+
+        proc.wait()
+
+        if proc.returncode != 0:
             return False
 
         # Verify the merge was committed (no conflicts remain)
