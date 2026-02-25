@@ -25,7 +25,7 @@ _EXAMPLE_SPEC = """\
   "tasks": [
     {
       "id": "init-project",
-      "description": "Create pyproject.toml, src/app/main.py with FastAPI app",
+      "description": "Create pyproject.toml, src/app/main.py with FastAPI app, configure pytest",
       "dependencies": [],
       "context_files": [],
       "output_files": [
@@ -33,7 +33,7 @@ _EXAMPLE_SPEC = """\
         "src/app/__init__.py",
         "src/app/main.py"
       ],
-      "verification": "python -c \\"from app.main import app\\"",
+      "verification": "pytest --co -q",
       "priority": 10,
       "model": "opus",
       "max_budget_usd": 1.0,
@@ -41,11 +41,11 @@ _EXAMPLE_SPEC = """\
     },
     {
       "id": "define-models",
-      "description": "Create src/app/models.py with Pydantic models",
+      "description": "TDD: tests/test_models.py first, then src/app/models.py",
       "dependencies": ["init-project"],
       "context_files": [],
-      "output_files": ["src/app/models.py"],
-      "verification": "python -c \\"from app.models import TodoCreate\\"",
+      "output_files": ["src/app/models.py", "tests/test_models.py"],
+      "verification": "pytest tests/test_models.py",
       "priority": 9,
       "model": "opus",
       "max_budget_usd": 1.0,
@@ -53,11 +53,11 @@ _EXAMPLE_SPEC = """\
     },
     {
       "id": "define-db",
-      "description": "Create src/app/database.py with SQLite management",
+      "description": "TDD: tests/test_database.py first, then src/app/database.py",
       "dependencies": ["init-project"],
       "context_files": [],
-      "output_files": ["src/app/database.py"],
-      "verification": "python -c \\"from app.database import init_db\\"",
+      "output_files": ["src/app/database.py", "tests/test_database.py"],
+      "verification": "pytest tests/test_database.py",
       "priority": 9,
       "model": "opus",
       "max_budget_usd": 1.0,
@@ -65,14 +65,14 @@ _EXAMPLE_SPEC = """\
     },
     {
       "id": "crud-endpoints",
-      "description": "Add CRUD endpoints for /todos to src/app/main.py",
+      "description": "TDD: tests/test_endpoints.py first, then CRUD in src/app/main.py",
       "dependencies": ["define-models", "define-db"],
       "context_files": [
         "src/app/models.py",
         "src/app/database.py"
       ],
-      "output_files": ["src/app/main.py"],
-      "verification": "python -c \\"from app.main import app\\"",
+      "output_files": ["src/app/main.py", "tests/test_endpoints.py"],
+      "verification": "pytest tests/test_endpoints.py",
       "priority": 8,
       "model": "opus",
       "max_budget_usd": 1.0,
@@ -118,6 +118,9 @@ Constraints:
 - context_files should list files the task needs to read from prior tasks
 - verification commands should be quick import checks or unit test runs
 - Start with a setup/init task that other tasks depend on
+- Follow TDD: each feature task must include test files in output_files
+- Task descriptions should explicitly say "write failing tests first, then implement"
+- Verification commands should run the test suite (e.g. pytest, bun test)
 
 Here is a complete example of a valid spec:
 

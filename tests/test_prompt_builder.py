@@ -110,3 +110,8 @@ class TestRulesSection:
     def test_contains_commit_rule(self) -> None:
         result = build_prompt("t", "d", "", {}, "", [])
         assert "Commit" in result
+
+    def test_contains_tdd_rule(self) -> None:
+        result = build_prompt("t", "d", "", {}, "", [])
+        assert "Follow TDD" in result
+        assert "failing test first" in result

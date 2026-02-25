@@ -87,6 +87,8 @@ class TestBuildInitPrompt:
         prompt = _build_init_prompt("test project")
         assert "DAG" in prompt
         assert "kebab-case" in prompt
+        assert "TDD" in prompt or "failing tests first" in prompt
+        assert "test files" in prompt or "test suite" in prompt
 
 
 # --- generate_spec tests ---

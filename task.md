@@ -136,11 +136,10 @@ filter serializing tasks with shared files correctly.
 
 ## Phase 2 — Feature Work
 
-### 29. Enforce TDD in spec creation
-Modify `po init` prompt and agent prompt builder so every implementation task requires
-writing tests first. The spec generator should produce a test task (or include test files
-in `output_files`) for each feature task. Agent prompts should instruct: write failing
-tests, then implement to make them pass. Verification commands should run the test suite.
+### ~~29. Enforce TDD in spec creation~~ — DONE
+Added TDD constraints to init prompt (test files in output_files, "write failing tests
+first" descriptions, pytest verification commands). Updated example spec to demonstrate
+TDD pattern. Added TDD rule to agent prompt builder. Tests updated and passing.
 
 **Files:** `src/po/init/generator.py`, `src/po/agent/prompt_builder.py`
 
