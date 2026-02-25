@@ -296,18 +296,19 @@ class SqliteTaskStore:
                     queue.append(tid)
         self.conn.commit()
 
-    def _reset_single(self, task_id: str) -> None:
-        """Reset a single task to pending (no commit)."""
-        self.conn.execute(
+    def _reset_single(self, task_id: str) -> bool:
+        """Reset a single task to pending (no commit). Returns True if a row was updated."""
+        cursor = self.conn.execute(
             """UPDATE tasks
                SET status = ?, error_message = NULL,
                    agent_result = NULL, worktree_path = NULL,
                    branch_name = NULL, session_id = NULL,
                    cost_usd = NULL, duration_ms = NULL,
                    started_at = NULL, completed_at = NULL
-               WHERE id = ? AND status IN (?, ?)""",
-            (STATUS_PENDING, task_id, STATUS_FAILED, STATUS_CANCELLED),
+               WHERE id = ? AND status IN (?, ?, ?)""",
+            (STATUS_PENDING, task_id, STATUS_FAILED, STATUS_CANCELLED, STATUS_RUNNING),
         )
+        return cursor.rowcount > 0
 
     def cancel_dependents(self, task_id: str) -> int:
         """Cancel all tasks that transitively depend on the given task. Returns count."""

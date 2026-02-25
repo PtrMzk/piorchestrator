@@ -411,7 +411,16 @@ def cmd_reset(args: argparse.Namespace) -> None:
 
     if args.task:
         store.reset_task(args.task)
-        print(f"Reset task '{args.task}' to pending.")
+        # Verify the task was actually reset
+        task = store.get_task(args.task)
+        if task and task["status"] == "pending":
+            print(f"Reset task '{args.task}' to pending.")
+        else:
+            status = task["status"] if task else "not found"
+            print(
+                f"Warning: task '{args.task}' was not reset "
+                f"(current status: {status})."
+            )
     else:
         tasks = store.get_all_tasks()
         count = 0
