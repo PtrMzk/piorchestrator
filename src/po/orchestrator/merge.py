@@ -70,10 +70,16 @@ class RebaseMerger:
         project_root: Path,
     ) -> MergeResult:
         """Synchronous merge logic."""
-        # Ensure clean state on main before merging
+        # Abort any in-progress rebase or merge from a previous failed attempt
+        git_dir = project_root / ".git"
+        if (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists():
+            self._run_git(["rebase", "--abort"], project_root)
+        merge_head = self._run_git(
+            ["rev-parse", "--verify", "MERGE_HEAD"], project_root
+        )
+        if merge_head.returncode == 0:
+            self._run_git(["merge", "--abort"], project_root)
         self._run_git(["checkout", "main"], project_root)
-        self._run_git(["reset", "--hard", "HEAD"], project_root)
-        self._run_git(["clean", "-fd"], project_root)
 
         # Step 1: Rebase task branch onto main
         logger.debug("Rebasing %s onto main", branch)
