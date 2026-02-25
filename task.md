@@ -131,3 +131,52 @@ Safe handling with `or ""` default and `if global_context:` guard in prompt buil
 ### ~~28. Example spec output file overlap is unintuitive~~ — DONE
 Output file overlap in `examples/todo-api.json` is by design — demonstrates the overlap
 filter serializing tasks with shared files correctly.
+
+---
+
+## Phase 2 — Feature Work
+
+### 29. Enforce TDD in spec creation
+Modify `po init` prompt and agent prompt builder so every implementation task requires
+writing tests first. The spec generator should produce a test task (or include test files
+in `output_files`) for each feature task. Agent prompts should instruct: write failing
+tests, then implement to make them pass. Verification commands should run the test suite.
+
+**Files:** `src/po/init/generator.py`, `src/po/agent/prompt_builder.py`
+
+### 30. Tailor spec generation for TypeScript/Bun UI apps
+Update the `po init` prompt to target TypeScript on Bun with minimal dependencies by
+default. The generated `global_context` should instruct agents to: use Bun as the runtime
+and package manager, prefer built-in APIs over third-party packages, and when a dependency
+is truly needed only use well-known packages (high GitHub stars, actively maintained — no
+obscure side-projects). Update the example spec to reflect this stack.
+
+**Files:** `src/po/init/generator.py`, `examples/todo-api.json`
+
+### 31. User stories in specs with Playwright verification agents
+Extend the spec schema to include a `user_stories` field (list of plain-English stories).
+`po init` should generate user stories from the description. For each user story, the spec
+generator should emit a dedicated Playwright end-to-end test task that depends on the
+relevant implementation tasks. These verification tasks launch a headless browser, walk
+through the story, and assert the expected behavior. Keep each verification task micro —
+one story per task.
+
+**Files:** `src/po/spec/schema.py`, `src/po/spec/loader.py`, `src/po/init/generator.py`
+
+### 32. Rich terminal UI with agent tree and live status
+Replace the simple `_live_event_printer` with a full-screen terminal UI (e.g. using
+`rich` or `blessed`). Show a tree of all tasks: pending (dimmed), running (spinner + last
+agent action), completed (green check), failed (red x). Update in real-time as events
+fire. The "last action" for running agents should be read from the tail of the agent's
+JSONL log file. Must still support non-TTY output (fall back to simple line printer).
+
+**Files:** `src/po/display/`, `src/po/cli.py`, `src/po/orchestrator/loop.py`
+
+### 33. Auto-generate documentation tasks in specs
+During `po init`, for each implementation task generate a companion micro-task that
+documents what was built. The doc task depends on its implementation task, reads the
+implementation's `output_files` as `context_files`, and writes a doc file into a nested
+`docs/` tree (e.g. `docs/components/<feature>.md`). Subsequent implementation tasks should
+include relevant doc files in their `context_files` so agents have up-to-date knowledge
+of what's already been built. Keep doc tasks tiny — just summarize the module's API,
+purpose, and integration points.
