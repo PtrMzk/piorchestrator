@@ -62,6 +62,7 @@ class ProjectSpec:
     max_concurrency: int = 3
     global_context: str = ""
     global_context_files: list[str] = field(default_factory=list)
+    user_stories: list[str] = field(default_factory=list)
     version: str = SPEC_VERSION
 
     def validate(self) -> list[str]:
@@ -115,6 +116,7 @@ class ProjectSpec:
             max_concurrency=data.get("max_concurrency", 3),
             global_context=data.get("global_context", ""),
             global_context_files=data.get("global_context_files", []),
+            user_stories=data.get("user_stories", []),
             version=data.get("version", SPEC_VERSION),
         )
 

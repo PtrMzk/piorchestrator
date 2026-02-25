@@ -92,6 +92,8 @@ class TestBuildInitPrompt:
         assert "TypeScript" in prompt
         assert "Bun" in prompt
         assert "built-in" in prompt.lower()
+        assert "user_stories" in prompt
+        assert "Playwright" in prompt or "playwright" in prompt
 
 
 # --- generate_spec tests ---

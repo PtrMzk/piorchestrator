@@ -77,8 +77,21 @@ _EXAMPLE_SPEC = """\
       "model": "opus",
       "max_budget_usd": 1.0,
       "tags": ["api", "crud"]
+    },
+    {
+      "id": "e2e-todo-crud",
+      "description": "Playwright e2e test: user can add a todo and see it in the list",
+      "dependencies": ["crud-endpoints"],
+      "context_files": ["src/routes.ts"],
+      "output_files": ["tests/e2e/todo-crud.spec.ts"],
+      "verification": "bunx playwright test tests/e2e/todo-crud.spec.ts",
+      "priority": 5,
+      "model": "opus",
+      "max_budget_usd": 1.0,
+      "tags": ["e2e", "playwright"]
     }
-  ]
+  ],
+  "user_stories": ["User can add a todo and see it in the list"]
 }"""
 
 
@@ -96,6 +109,7 @@ The spec must be a JSON object with these fields:
 - "max_concurrency" (integer): how many tasks can run in parallel, typically 3
 - "global_context" (string): shared instructions for all tasks
 - "global_context_files" (list of strings): files all tasks should read
+- "user_stories" (list of strings): plain-English user stories
 - "tasks" (list, required): array of task objects
 
 Each task object has:
@@ -118,6 +132,8 @@ Constraints:
 - context_files should list files the task needs to read from prior tasks
 - verification commands should be quick import checks or unit test runs
 - Start with a setup/init task that other tasks depend on
+- Extract user stories from the project description
+- For each user story, emit a Playwright e2e task with one story per task
 - Follow TDD: each feature task must include test files in output_files
 - Task descriptions should explicitly say "write failing tests first, then implement"
 - Verification commands should run the test suite (e.g. pytest, bun test)

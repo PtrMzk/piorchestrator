@@ -150,15 +150,12 @@ prompt. Updated test assertions for new keywords.
 
 **Files:** `src/po/init/generator.py`, `examples/todo-api.json`, `tests/test_init.py`
 
-### 31. User stories in specs with Playwright verification agents
-Extend the spec schema to include a `user_stories` field (list of plain-English stories).
-`po init` should generate user stories from the description. For each user story, the spec
-generator should emit a dedicated Playwright end-to-end test task that depends on the
-relevant implementation tasks. These verification tasks launch a headless browser, walk
-through the story, and assert the expected behavior. Keep each verification task micro —
-one story per task.
+### ~~31. User stories in specs with Playwright verification agents~~ — DONE
+Added `user_stories` field to `ProjectSpec` schema. Updated `_EXAMPLE_SPEC` and init prompt
+to generate Playwright e2e tasks for each user story. Updated `examples/todo-api.json` with
+2 user stories and 2 e2e tasks. All tests passing.
 
-**Files:** `src/po/spec/schema.py`, `src/po/spec/loader.py`, `src/po/init/generator.py`
+**Files:** `src/po/spec/schema.py`, `src/po/init/generator.py`, `examples/todo-api.json`
 
 ### 32. Rich terminal UI with agent tree and live status
 Replace the simple `_live_event_printer` with a full-screen terminal UI (e.g. using

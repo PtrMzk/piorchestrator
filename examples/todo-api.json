@@ -5,6 +5,10 @@
   "max_concurrency": 3,
   "global_context": "Use TypeScript on Bun. Prefer built-in Bun APIs (Bun.serve, Bun.file, bun:sqlite) over third-party packages. When a dependency is truly needed, only use well-known packages with high GitHub stars and active maintenance.",
   "global_context_files": ["README.md"],
+  "user_stories": [
+    "User can create a new todo item via POST and receive a 201 response",
+    "User can list all todos via GET and see previously created items"
+  ],
   "tasks": [
     {
       "id": "init-project",
@@ -89,6 +93,30 @@
       "model": "sonnet",
       "max_budget_usd": 1.0,
       "tags": ["api", "crud"]
+    },
+    {
+      "id": "e2e-create-todo",
+      "description": "Playwright e2e test: user can create a new todo item via POST and receive a 201 response",
+      "dependencies": ["crud-create"],
+      "context_files": ["src/routes.ts"],
+      "output_files": ["tests/e2e/create-todo.spec.ts"],
+      "verification": "bunx playwright test tests/e2e/create-todo.spec.ts",
+      "priority": 5,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["e2e", "playwright"]
+    },
+    {
+      "id": "e2e-list-todos",
+      "description": "Playwright e2e test: user can list all todos via GET and see previously created items",
+      "dependencies": ["crud-list"],
+      "context_files": ["src/routes.ts"],
+      "output_files": ["tests/e2e/list-todos.spec.ts"],
+      "verification": "bunx playwright test tests/e2e/list-todos.spec.ts",
+      "priority": 5,
+      "model": "sonnet",
+      "max_budget_usd": 1.0,
+      "tags": ["e2e", "playwright"]
     }
   ]
 }

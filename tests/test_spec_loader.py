@@ -142,6 +142,23 @@ class TestProjectSpec:
         spec = ProjectSpec.from_dict(data)
         assert spec.tasks[0].model == "haiku"
 
+    def test_from_dict_with_user_stories(self) -> None:
+        data = {
+            "project_name": "test",
+            "user_stories": ["User can log in", "User can sign up"],
+            "tasks": [{"id": "t1", "description": "d"}],
+        }
+        spec = ProjectSpec.from_dict(data)
+        assert spec.user_stories == ["User can log in", "User can sign up"]
+
+    def test_from_dict_user_stories_default(self) -> None:
+        data = {
+            "project_name": "test",
+            "tasks": [{"id": "t1", "description": "d"}],
+        }
+        spec = ProjectSpec.from_dict(data)
+        assert spec.user_stories == []
+
     def test_from_json(self) -> None:
         data = {
             "project_name": "test",
@@ -183,4 +200,4 @@ class TestJsonSpecLoader:
             loader = JsonSpecLoader()
             spec = loader.load(example)
             assert spec.project_name == "todo-api"
-            assert len(spec.tasks) == 7
+            assert len(spec.tasks) == 9
