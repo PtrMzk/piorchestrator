@@ -13,8 +13,8 @@ LOGS_DIR = "logs"
 # Default concurrency
 DEFAULT_MAX_CONCURRENCY = 3
 
-# Default model
-DEFAULT_MODEL = "sonnet"
+# Default model for spec-level tasks; subtasks default to sonnet
+DEFAULT_MODEL = "opus"
 
 # Default max budget per task in USD
 DEFAULT_MAX_BUDGET_USD = 2.0

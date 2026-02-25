@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS project (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     project_name TEXT NOT NULL,
     description TEXT DEFAULT '',
-    default_model TEXT DEFAULT 'sonnet',
+    default_model TEXT DEFAULT 'opus',
     max_concurrency INTEGER DEFAULT 3,
     global_context TEXT DEFAULT '',
     global_context_files TEXT DEFAULT '[]',

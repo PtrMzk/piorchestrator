@@ -13,7 +13,7 @@ _EXAMPLE_SPEC = """\
 {
   "project_name": "todo-api",
   "description": "REST API for a todo list",
-  "default_model": "sonnet",
+  "default_model": "opus",
   "max_concurrency": 3,
   "global_context": "Use Python 3.12, FastAPI, and SQLite.",
   "global_context_files": ["README.md"],
@@ -30,7 +30,7 @@ _EXAMPLE_SPEC = """\
       ],
       "verification": "python -c \\"from app.main import app\\"",
       "priority": 10,
-      "model": "sonnet",
+      "model": "opus",
       "max_budget_usd": 1.0,
       "tags": ["setup"]
     },
@@ -42,7 +42,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["src/app/models.py"],
       "verification": "python -c \\"from app.models import TodoCreate\\"",
       "priority": 9,
-      "model": "sonnet",
+      "model": "opus",
       "max_budget_usd": 1.0,
       "tags": ["models"]
     },
@@ -54,7 +54,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["src/app/database.py"],
       "verification": "python -c \\"from app.database import init_db\\"",
       "priority": 9,
-      "model": "sonnet",
+      "model": "opus",
       "max_budget_usd": 1.0,
       "tags": ["database"]
     },
@@ -69,7 +69,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["src/app/main.py"],
       "verification": "python -c \\"from app.main import app\\"",
       "priority": 8,
-      "model": "sonnet",
+      "model": "opus",
       "max_budget_usd": 1.0,
       "tags": ["api", "crud"]
     }
@@ -87,7 +87,7 @@ Generate a valid PO orchestrator spec JSON file for the following project descri
 The spec must be a JSON object with these fields:
 - "project_name" (string, required): short kebab-case identifier
 - "description" (string): one-line summary
-- "default_model" (string): model for tasks, use "sonnet"
+- "default_model" (string): model for tasks, use "opus"
 - "max_concurrency" (integer): how many tasks can run in parallel, typically 3
 - "global_context" (string): shared instructions for all tasks
 - "global_context_files" (list of strings): files all tasks should read
@@ -101,7 +101,7 @@ Each task object has:
 - "output_files" (list of strings): files the task will create or modify
 - "verification" (string): shell command to verify the task succeeded
 - "priority" (integer): higher runs first among independent tasks (10 = highest)
-- "model" (string): "sonnet" for most tasks, "opus" for complex ones
+- "model" (string): "opus" for most tasks, "sonnet" for simple ones
 - "max_budget_usd" (float): cost cap per task, typically 1.0
 - "tags" (list of strings): categorical labels
 
@@ -182,7 +182,7 @@ def _extract_json(raw: str) -> dict:
     raise ValueError("Could not extract valid JSON from Claude's response")
 
 
-def generate_spec(description: str, output: Path, model: str = "sonnet") -> Path:
+def generate_spec(description: str, output: Path, model: str = "opus") -> Path:
     """Generate a PO spec from a description, validate it, and write to file.
 
     Args:

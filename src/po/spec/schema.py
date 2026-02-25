@@ -58,7 +58,7 @@ class ProjectSpec:
     project_name: str
     tasks: list[TaskSpec]
     description: str = ""
-    default_model: str = "sonnet"
+    default_model: str = "opus"
     max_concurrency: int = 3
     global_context: str = ""
     global_context_files: list[str] = field(default_factory=list)
@@ -102,7 +102,7 @@ class ProjectSpec:
         tasks = [TaskSpec.from_dict(t) for t in tasks_data]
 
         # Apply default_model to tasks that don't override it
-        default_model = data.get("default_model", "sonnet")
+        default_model = data.get("default_model", "opus")
         for i, task_data in enumerate(tasks_data):
             if "model" not in task_data:
                 tasks[i].model = default_model

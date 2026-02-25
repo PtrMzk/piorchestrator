@@ -175,8 +175,8 @@ def main() -> None:
         help="Output file path (default: spec.json)",
     )
     init_parser.add_argument(
-        "--model", type=str, default="sonnet",
-        help="Claude model to use (default: sonnet)",
+        "--model", type=str, default="opus",
+        help="Claude model to use (default: opus)",
     )
 
     args = parser.parse_args()
