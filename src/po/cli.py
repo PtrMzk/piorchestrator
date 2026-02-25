@@ -207,6 +207,8 @@ def cmd_plan(args: argparse.Namespace) -> None:
     """Load spec, validate, persist to DB, show execution plan."""
     project_root: Path = args.project_root.resolve()
     spec_file: Path | None = args.spec_file
+    if spec_file is not None:
+        spec_file = spec_file.resolve()
 
     # 1. If --playground: generate spec + seed files
     if args.playground:
@@ -300,7 +302,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     # If a spec file was provided, auto-plan first
     if args.spec_file is not None:
         plan_args = argparse.Namespace(
-            spec_file=args.spec_file,
+            spec_file=args.spec_file.resolve(),
             project_root=args.project_root,
             playground=False,
             scaffold=False,
