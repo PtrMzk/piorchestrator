@@ -6,6 +6,8 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -365,6 +367,18 @@ def cmd_run(args: argparse.Namespace) -> None:
     print(format_progress_summary(store.get_all_tasks()))
     print()
 
+    # Prevent macOS from sleeping while orchestration is running
+    caffeinate_proc = None
+    try:
+        caffeinate_proc = subprocess.Popen(
+            ["caffeinate", "-i", "-s", "-w", str(os.getpid())],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.debug("caffeinate started (pid=%d)", caffeinate_proc.pid)
+    except FileNotFoundError:
+        logger.debug("caffeinate not available (non-macOS?), skipping")
+
     try:
         asyncio.run(orchestrator.run())
     except RuntimeError as e:
@@ -372,6 +386,10 @@ def cmd_run(args: argparse.Namespace) -> None:
         sys.exit(1)
     except KeyboardInterrupt:
         print("\nShutdown requested. Existing tasks will be preserved.")
+    finally:
+        if caffeinate_proc is not None:
+            caffeinate_proc.terminate()
+            caffeinate_proc.wait()
 
     print()
     print(format_progress_summary(store.get_all_tasks()))
