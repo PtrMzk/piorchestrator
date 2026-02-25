@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
+from po.config import logs_dir
 from po.spec.schema import ProjectSpec
+
+logger = logging.getLogger(__name__)
 
 _EXAMPLE_SPEC = """\
 {
@@ -121,25 +126,73 @@ Here is a complete example of a valid spec:
 Return ONLY the JSON object, no markdown fences or explanation."""
 
 
-def _invoke_claude(prompt: str, model: str) -> str:
-    """Call the Claude CLI synchronously and return raw stdout."""
+def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) -> str:
+    """Call the Claude CLI synchronously, stream logs to disk, and return the result."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
     cmd = [
         "claude",
         "-p", prompt,
-        "--output-format", "text",
+        "--verbose",
+        "--output-format", "stream-json",
         "--model", model,
     ]
-    result = subprocess.run(
+
+    log_file = None
+    if project_root is not None:
+        log_dir = logs_dir(project_root)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "init.jsonl"
+
+    proc = subprocess.Popen(
         cmd,
-        capture_output=True,
-        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         env=env,
     )
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        raise RuntimeError(f"Claude CLI failed (exit {result.returncode}): {stderr}")
-    return result.stdout
+
+    result_text: str | None = None
+    assert proc.stdout is not None
+
+    fh = open(log_file, "wb") if log_file else None
+    try:
+        for raw_line in proc.stdout:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                if fh:
+                    fh.write(raw_line)
+                    fh.flush()
+                continue
+
+            msg["timestamp"] = datetime.now(timezone.utc).isoformat()
+            if fh:
+                fh.write(json.dumps(msg).encode())
+                fh.write(b"\n")
+                fh.flush()
+
+            if msg.get("type") == "result":
+                result_text = msg.get("result", "")
+    finally:
+        if fh:
+            fh.close()
+
+    proc.wait()
+
+    if proc.returncode != 0:
+        assert proc.stderr is not None
+        stderr = proc.stderr.read().decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Claude CLI failed (exit {proc.returncode}): {stderr}")
+
+    if result_text is None:
+        raise RuntimeError("Claude CLI returned no result")
+
+    if log_file:
+        logger.info("Logs written to %s", log_file)
+
+    return result_text
 
 
 def _extract_json(raw: str) -> dict:
@@ -182,13 +235,19 @@ def _extract_json(raw: str) -> dict:
     raise ValueError("Could not extract valid JSON from Claude's response")
 
 
-def generate_spec(description: str, output: Path, model: str = "opus") -> Path:
+def generate_spec(
+    description: str,
+    output: Path,
+    model: str = "opus",
+    project_root: Path | None = None,
+) -> Path:
     """Generate a PO spec from a description, validate it, and write to file.
 
     Args:
         description: Plain English project description.
         output: Path to write the spec JSON file.
         model: Claude model to use.
+        project_root: Project root for log output (defaults to output's parent).
 
     Returns:
         The path the spec was written to.
@@ -201,8 +260,10 @@ def generate_spec(description: str, output: Path, model: str = "opus") -> Path:
     if output.exists():
         raise FileExistsError(f"Output file already exists: {output}")
 
+    root = project_root or output.parent.resolve()
+
     prompt = _build_init_prompt(description)
-    raw = _invoke_claude(prompt, model)
+    raw = _invoke_claude(prompt, model, project_root=root)
     data = _extract_json(raw)
 
     # Validate through ProjectSpec
