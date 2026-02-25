@@ -92,6 +92,8 @@ class TestRebaseMergerCleanMerge:
     def test_merge_with_verification_fails_reverts(self, git_repo: Path) -> None:
         """Failed verification reverts the merge commit."""
         merger = RebaseMerger()
+        # Pre-seed .gitignore so _ensure_gitignore is a no-op during merge
+        merger._ensure_gitignore(git_repo)
         branch = _make_clean_branch(git_repo, "po/task-vf", "vf.py", "x = 1")
 
         # Count commits before
@@ -328,6 +330,45 @@ class TestInvokeMergeAgent:
         assert "-p" in captured_cmd
         prompt_idx = captured_cmd.index("-p") + 1
         assert "README.md" in captured_cmd[prompt_idx]
+
+
+class TestEnsureGitignore:
+    """Tests for .gitignore creation to prevent untracked files blocking merges."""
+
+    def test_untracked_files_dont_block_merge(self, git_repo: Path) -> None:
+        """Untracked build artifacts (dist/, node_modules/) don't block merge."""
+        merger = RebaseMerger()
+        branch = _make_clean_branch(git_repo, "po/task-gi", "new_file.py", "x = 1")
+
+        # Simulate build artifacts that verification commands would create
+        (git_repo / "dist").mkdir()
+        (git_repo / "dist" / "index.js").write_text("compiled output")
+        (git_repo / "node_modules").mkdir()
+        (git_repo / "node_modules" / ".vite").write_text("cache")
+
+        result = merger._merge_sync(branch, "task-gi", "", git_repo)
+        assert result.success is True
+
+        # .gitignore should have been created with the expected patterns
+        gitignore = git_repo / ".gitignore"
+        assert gitignore.exists()
+        content = gitignore.read_text()
+        assert "node_modules/" in content
+        assert "dist/" in content
+        assert "build/" in content
+        assert ".po/" in content
+
+    def test_ensure_gitignore_idempotent(self, git_repo: Path) -> None:
+        """Calling _ensure_gitignore twice doesn't duplicate patterns."""
+        merger = RebaseMerger()
+
+        merger._ensure_gitignore(git_repo)
+        first = (git_repo / ".gitignore").read_text()
+
+        merger._ensure_gitignore(git_repo)
+        second = (git_repo / ".gitignore").read_text()
+
+        assert first == second
 
 
 class TestRebaseMergerAsync:

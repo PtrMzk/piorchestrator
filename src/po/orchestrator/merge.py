@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,6 +63,32 @@ class RebaseMerger:
                 None, self._merge_sync, branch, task_id, verification, project_root
             )
 
+    def _ensure_gitignore(self, project_root: Path) -> None:
+        """Ensure .gitignore contains common build artifact patterns.
+
+        Idempotent: no-ops if all patterns are already present.
+        Stages and commits the change to main so it persists.
+        """
+        gitignore = project_root / ".gitignore"
+        existing = gitignore.read_text() if gitignore.exists() else ""
+
+        patterns = ["node_modules/", "dist/", "build/", ".po/"]
+        missing = [p for p in patterns if p not in existing]
+        if not missing:
+            return
+
+        lines = existing.rstrip("\n")
+        if lines:
+            lines += "\n"
+        lines += "\n".join(missing) + "\n"
+        gitignore.write_text(lines)
+
+        self._run_git(["add", ".gitignore"], project_root)
+        self._run_git(
+            ["commit", "-m", "Add .gitignore for build artifacts"],
+            project_root,
+        )
+
     def _merge_sync(
         self,
         branch: str,
@@ -70,16 +97,21 @@ class RebaseMerger:
         project_root: Path,
     ) -> MergeResult:
         """Synchronous merge logic."""
-        # Abort any in-progress rebase or merge from a previous failed attempt
+        # Clean up stale rebase/merge state from previous failed attempts
         git_dir = project_root / ".git"
-        if (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists():
-            self._run_git(["rebase", "--abort"], project_root)
+        for stale_dir in ("rebase-merge", "rebase-apply"):
+            stale_path = git_dir / stale_dir
+            if stale_path.exists():
+                shutil.rmtree(stale_path)
         merge_head = self._run_git(
             ["rev-parse", "--verify", "MERGE_HEAD"], project_root
         )
         if merge_head.returncode == 0:
             self._run_git(["merge", "--abort"], project_root)
-        self._run_git(["checkout", "main"], project_root)
+        self._run_git(["checkout", "-f", "main"], project_root)
+
+        # Ensure .gitignore covers build artifacts before merging
+        self._ensure_gitignore(project_root)
 
         # Step 1: Rebase task branch onto main
         logger.debug("Rebasing %s onto main", branch)
@@ -142,7 +174,7 @@ class RebaseMerger:
         2. If there are conflicts, invoke Claude to resolve them.
         3. Complete the merge commit and run verification.
         """
-        self._run_git(["checkout", "main"], project_root)
+        self._run_git(["checkout", "-f", "main"], project_root)
 
         # Start merge without committing so we can inspect conflicts
         result = self._run_git(
