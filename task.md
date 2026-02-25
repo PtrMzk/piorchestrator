@@ -143,14 +143,12 @@ TDD pattern. Added TDD rule to agent prompt builder. Tests updated and passing.
 
 **Files:** `src/po/init/generator.py`, `src/po/agent/prompt_builder.py`
 
-### 30. Tailor spec generation for TypeScript/Bun UI apps
-Update the `po init` prompt to target TypeScript on Bun with minimal dependencies by
-default. The generated `global_context` should instruct agents to: use Bun as the runtime
-and package manager, prefer built-in APIs over third-party packages, and when a dependency
-is truly needed only use well-known packages (high GitHub stars, actively maintained — no
-obscure side-projects). Update the example spec to reflect this stack.
+### ~~30. Tailor spec generation for TypeScript/Bun UI apps~~ — DONE
+Rewrote `_EXAMPLE_SPEC` and `examples/todo-api.json` to target TypeScript on Bun with
+built-in APIs (Bun.serve, bun:sqlite). Added Bun/TypeScript constraints to the init
+prompt. Updated test assertions for new keywords.
 
-**Files:** `src/po/init/generator.py`, `examples/todo-api.json`
+**Files:** `src/po/init/generator.py`, `examples/todo-api.json`, `tests/test_init.py`
 
 ### 31. User stories in specs with Playwright verification agents
 Extend the spec schema to include a `user_stories` field (list of plain-English stories).

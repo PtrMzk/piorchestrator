@@ -20,20 +20,20 @@ _EXAMPLE_SPEC = """\
   "description": "REST API for a todo list",
   "default_model": "opus",
   "max_concurrency": 3,
-  "global_context": "Use Python 3.12, FastAPI, and SQLite.",
+  "global_context": "TypeScript on Bun. Prefer built-in Bun APIs. Only well-known deps.",
   "global_context_files": ["README.md"],
   "tasks": [
     {
       "id": "init-project",
-      "description": "Create pyproject.toml, src/app/main.py with FastAPI app, configure pytest",
+      "description": "Create package.json, tsconfig.json, src/index.ts with Bun.serve",
       "dependencies": [],
       "context_files": [],
       "output_files": [
-        "pyproject.toml",
-        "src/app/__init__.py",
-        "src/app/main.py"
+        "package.json",
+        "tsconfig.json",
+        "src/index.ts"
       ],
-      "verification": "pytest --co -q",
+      "verification": "bun test --timeout 5000",
       "priority": 10,
       "model": "opus",
       "max_budget_usd": 1.0,
@@ -41,11 +41,11 @@ _EXAMPLE_SPEC = """\
     },
     {
       "id": "define-models",
-      "description": "TDD: tests/test_models.py first, then src/app/models.py",
+      "description": "TDD: tests/models.test.ts first, then src/models.ts",
       "dependencies": ["init-project"],
       "context_files": [],
-      "output_files": ["src/app/models.py", "tests/test_models.py"],
-      "verification": "pytest tests/test_models.py",
+      "output_files": ["src/models.ts", "tests/models.test.ts"],
+      "verification": "bun test tests/models.test.ts",
       "priority": 9,
       "model": "opus",
       "max_budget_usd": 1.0,
@@ -53,11 +53,11 @@ _EXAMPLE_SPEC = """\
     },
     {
       "id": "define-db",
-      "description": "TDD: tests/test_database.py first, then src/app/database.py",
+      "description": "TDD: tests/database.test.ts first, then src/database.ts with bun:sqlite",
       "dependencies": ["init-project"],
       "context_files": [],
-      "output_files": ["src/app/database.py", "tests/test_database.py"],
-      "verification": "pytest tests/test_database.py",
+      "output_files": ["src/database.ts", "tests/database.test.ts"],
+      "verification": "bun test tests/database.test.ts",
       "priority": 9,
       "model": "opus",
       "max_budget_usd": 1.0,
@@ -65,14 +65,14 @@ _EXAMPLE_SPEC = """\
     },
     {
       "id": "crud-endpoints",
-      "description": "TDD: tests/test_endpoints.py first, then CRUD in src/app/main.py",
+      "description": "TDD: tests/routes.test.ts first, then CRUD in src/routes.ts",
       "dependencies": ["define-models", "define-db"],
       "context_files": [
-        "src/app/models.py",
-        "src/app/database.py"
+        "src/models.ts",
+        "src/database.ts"
       ],
-      "output_files": ["src/app/main.py", "tests/test_endpoints.py"],
-      "verification": "pytest tests/test_endpoints.py",
+      "output_files": ["src/routes.ts", "tests/routes.test.ts"],
+      "verification": "bun test tests/routes.test.ts",
       "priority": 8,
       "model": "opus",
       "max_budget_usd": 1.0,
@@ -121,6 +121,8 @@ Constraints:
 - Follow TDD: each feature task must include test files in output_files
 - Task descriptions should explicitly say "write failing tests first, then implement"
 - Verification commands should run the test suite (e.g. pytest, bun test)
+- Prefer TypeScript on Bun with built-in APIs over third-party packages
+- When a dependency is needed, only use well-known, actively maintained packages
 
 Here is a complete example of a valid spec:
 

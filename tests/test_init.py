@@ -89,6 +89,9 @@ class TestBuildInitPrompt:
         assert "kebab-case" in prompt
         assert "TDD" in prompt or "failing tests first" in prompt
         assert "test files" in prompt or "test suite" in prompt
+        assert "TypeScript" in prompt
+        assert "Bun" in prompt
+        assert "built-in" in prompt.lower()
 
 
 # --- generate_spec tests ---
