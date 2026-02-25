@@ -481,6 +481,18 @@ def cmd_logs(args: argparse.Namespace) -> None:
             entries.append(line)
             continue
 
+        ts = msg.get("timestamp", "")
+        if ts:
+            # Show local time as HH:MM:SS
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.fromisoformat(ts).astimezone()
+                ts_prefix = dt.strftime("%H:%M:%S") + " "
+            except (ValueError, TypeError):
+                ts_prefix = ""
+        else:
+            ts_prefix = ""
+
         msg_type = msg.get("type", "")
         if msg_type == "assistant":
             text = msg.get("message", {}).get("content", "")
@@ -490,27 +502,27 @@ def cmd_logs(args: argparse.Namespace) -> None:
                         continue
                     btype = block.get("type")
                     if btype == "text":
-                        entries.append(f"[Assistant] {block['text']}")
+                        entries.append(f"{ts_prefix}[Assistant] {block['text']}")
                     elif btype == "tool_use":
                         name = block.get("name", "?")
                         inp = json.dumps(block.get("input", {}))
                         if len(inp) > 120:
                             inp = inp[:120] + "..."
-                        entries.append(f"[Tool Call] {name}({inp})")
+                        entries.append(f"{ts_prefix}[Tool Call] {name}({inp})")
             elif isinstance(text, str) and text:
-                entries.append(f"[Assistant] {text}")
+                entries.append(f"{ts_prefix}[Assistant] {text}")
         elif msg_type == "tool_result":
             content_val = msg.get("content", "")
             if isinstance(content_val, str):
                 truncated = content_val[:200]
                 if len(content_val) > 200:
                     truncated += "..."
-                entries.append(f"[Tool Result] {truncated}")
+                entries.append(f"{ts_prefix}[Tool Result] {truncated}")
         elif msg_type == "result":
             cost = msg.get("cost_usd", "?")
             duration = msg.get("duration_ms")
             result_text = msg.get("result", "")[:200]
-            parts = [f"\n[Result] Cost: ${cost}"]
+            parts = [f"\n{ts_prefix}[Result] Cost: ${cost}"]
             if duration:
                 parts[0] += f" | Duration: {duration}ms"
             if result_text:

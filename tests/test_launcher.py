@@ -237,7 +237,10 @@ class TestClaudeCodeRunner:
 
         log_file = project_root / ".po" / "logs" / "t1.jsonl"
         assert log_file.exists()
-        assert log_file.read_bytes() == stdout
+        logged = json.loads(log_file.read_text().strip())
+        assert logged["type"] == "result"
+        assert logged["result"] == "ok"
+        assert "timestamp" in logged
 
     @pytest.mark.asyncio
     async def test_empty_stderr_uses_exit_code(self, tmp_path: Path) -> None:

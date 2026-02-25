@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
@@ -107,18 +108,23 @@ class ClaudeCodeRunner:
         assert proc.stdout is not None
         with open(log_file, "wb") as fh:
             async for raw_line in proc.stdout:
-                # Write each line to disk immediately
-                fh.write(raw_line)
-                fh.flush()
-
-                # Parse for result metadata
+                # Inject a timestamp into each JSON line
                 line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line:
                     continue
                 try:
                     msg = json.loads(line)
                 except json.JSONDecodeError:
+                    fh.write(raw_line)
+                    fh.flush()
                     continue
+
+                msg["timestamp"] = datetime.now(timezone.utc).isoformat()
+                fh.write(json.dumps(msg).encode())
+                fh.write(b"\n")
+                fh.flush()
+
+                # Parse for result metadata
                 if msg.get("type") == "result":
                     result_text = msg.get("result", "")
                     cost_usd = msg.get("cost_usd")
