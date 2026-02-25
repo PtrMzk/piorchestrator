@@ -10,12 +10,21 @@ def build_prompt(
     context_files_content: dict[str, str],
     verification: str,
     output_files: list[str],
+    previous_error: str = "",
 ) -> str:
     """Build the prompt string sent to the Claude Code agent."""
     parts: list[str] = []
 
     parts.append(f"# Task: {task_id}\n")
     parts.append(description)
+
+    if previous_error:
+        parts.append(
+            "\n## Previous Attempt Failed\n"
+            "A previous attempt at this task failed during merge/verification "
+            "with the following error. Please fix the underlying issue:\n"
+            f"```\n{previous_error}\n```"
+        )
 
     if global_context:
         parts.append(f"\n## Project Context\n{global_context}")

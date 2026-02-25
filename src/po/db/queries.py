@@ -49,6 +49,7 @@ class TaskStore(Protocol):
         duration_ms: int | None,
         session_id: str | None = None,
     ) -> None: ...
+    def set_error_message(self, task_id: str, error_message: str) -> None: ...
     def get_ready_task_ids(self) -> list[str]: ...
     def get_running_task_ids(self) -> list[str]: ...
     def reset_task(self, task_id: str) -> None: ...
@@ -227,6 +228,14 @@ class SqliteTaskStore:
                WHERE id = ?""",
             (STATUS_FAILED, error_message, cost_usd,
              duration_ms, session_id, now, task_id),
+        )
+        self.conn.commit()
+
+    def set_error_message(self, task_id: str, error_message: str) -> None:
+        """Store an error message on a task without changing its status."""
+        self.conn.execute(
+            "UPDATE tasks SET error_message = ? WHERE id = ?",
+            (error_message, task_id),
         )
         self.conn.commit()
 

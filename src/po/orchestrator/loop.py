@@ -255,6 +255,7 @@ class OrchestratorLoop:
         )
 
         # Build prompt
+        previous_error = str(task["error_message"]) if task["error_message"] else ""
         prompt = build_prompt(
             task_id=task_id,
             description=str(task["description"]),
@@ -262,6 +263,7 @@ class OrchestratorLoop:
             context_files_content=context_content,
             verification=str(task["verification"]) if task["verification"] else "",
             output_files=output_files,
+            previous_error=previous_error,
         )
 
         # Run agent
@@ -318,15 +320,26 @@ class OrchestratorLoop:
                 self._emit("task_completed", result.task_id, cost)
             else:
                 err = merge_result.error_message or "Merge failed"
-                self.store.set_failed(
-                    result.task_id,
-                    error_message=err,
-                    cost_usd=result.cost_usd,
-                    duration_ms=result.duration_ms,
-                    session_id=result.session_id,
-                )
-                self._handle_failure(result.task_id)
-                self._emit("task_failed", result.task_id, err)
+                # Check if we can retry — attempt was already incremented
+                # by set_running, so read it directly.
+                attempt = int(task["attempt"])
+                if attempt <= self.max_retries:
+                    self.store.set_error_message(result.task_id, err)
+                    self.store.set_status(result.task_id, STATUS_PENDING)
+                    self._emit(
+                        "task_retrying", result.task_id,
+                        f"merge failed, attempt {attempt}/{self.max_retries}",
+                    )
+                else:
+                    self.store.set_failed(
+                        result.task_id,
+                        error_message=err,
+                        cost_usd=result.cost_usd,
+                        duration_ms=result.duration_ms,
+                        session_id=result.session_id,
+                    )
+                    self._handle_failure(result.task_id)
+                    self._emit("task_failed", result.task_id, err)
         else:
             # Handle subtasks if the agent created them
             if result.subtasks:

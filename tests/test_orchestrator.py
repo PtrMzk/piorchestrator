@@ -126,6 +126,104 @@ class TestOrchestratorLoop:
         assert task_a["status"] == "failed"
 
     @pytest.mark.asyncio
+    async def test_merge_failure_retries_with_error_context(self, tmp_path: Path) -> None:
+        """Merge failures should retry when max_retries > 0, passing error to agent."""
+        spec_dict = {
+            "project_name": "merge-retry-test",
+            "tasks": [
+                {"id": "t1", "description": "A task", "output_files": ["a.py"]},
+            ],
+        }
+        spec = ProjectSpec.from_dict(spec_dict)
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        db_path = project_root / ".po" / "state.db"
+        conn = init_db(db_path)
+        store = SqliteTaskStore(conn)
+        store.save_spec(spec)
+
+        mock_agent = MockAgentRunner()
+        mock_merger = MockMergeStrategy()
+        # Merge always fails for t1
+        mock_merger.fail_tasks.add("t1")
+
+        orch = OrchestratorLoop(
+            store=store,
+            project_root=project_root,
+            max_concurrency=1,
+            worktree_manager=MockWorktreeProvider(tmp_path / "wt"),
+            agent_runner=mock_agent,
+            merger=mock_merger,
+            max_retries=1,
+        )
+
+        await orch.run()
+
+        # Agent should have been called twice (initial + 1 retry)
+        t1_calls = [c for c in mock_agent.calls if c["task_id"] == "t1"]
+        assert len(t1_calls) == 2
+
+        # Second call should contain the merge error in the prompt
+        assert "Mock merge failure for t1" in t1_calls[1]["prompt"]
+        assert "Previous Attempt Failed" in t1_calls[1]["prompt"]
+
+        # After exhausting retries, task should be failed
+        task = store.get_task("t1")
+        assert task is not None
+        assert task["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_merge_failure_succeeds_on_retry(self, tmp_path: Path) -> None:
+        """Merge failure on first attempt, success on second."""
+        spec_dict = {
+            "project_name": "merge-retry-ok",
+            "tasks": [
+                {"id": "t1", "description": "A task", "output_files": ["a.py"]},
+            ],
+        }
+        spec = ProjectSpec.from_dict(spec_dict)
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        db_path = project_root / ".po" / "state.db"
+        conn = init_db(db_path)
+        store = SqliteTaskStore(conn)
+        store.save_spec(spec)
+
+        call_count = 0
+
+        class FailOnceMerger(MockMergeStrategy):
+            async def merge(self, branch, task_id, verification, project_root):
+                from po.orchestrator.merge import MergeResult
+
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return MergeResult(
+                        success=False,
+                        error_message="Verification failed: npx tsc prompt",
+                    )
+                self.merged.append(task_id)
+                return MergeResult(success=True)
+
+        orch = OrchestratorLoop(
+            store=store,
+            project_root=project_root,
+            max_concurrency=1,
+            worktree_manager=MockWorktreeProvider(tmp_path / "wt"),
+            agent_runner=MockAgentRunner(),
+            merger=FailOnceMerger(),
+            max_retries=1,
+        )
+
+        await orch.run()
+
+        task = store.get_task("t1")
+        assert task is not None
+        assert task["status"] == "completed"
+
+    @pytest.mark.asyncio
     async def test_concurrency_respected(self, orchestrator_env: dict) -> None:
         """Verify that max_concurrency limits parallel agent runs."""
         # Track concurrent runs
