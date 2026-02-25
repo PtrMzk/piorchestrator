@@ -85,7 +85,7 @@ class GitWorktreeManager:
         wt_path = self._worktree_path(task_id, project_root)
         wt_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Clean up stale worktree/branch from a previous run
+        # Clean up stale worktree directory from a previous run
         if wt_path.exists():
             subprocess.run(
                 ["git", "worktree", "remove", "--force", str(wt_path)],
@@ -102,36 +102,46 @@ class GitWorktreeManager:
             text=True,
             check=False,
         )
-        # Delete stale branch if it exists
-        subprocess.run(
-            ["git", "branch", "-D", branch],
+
+        # Ensure a git repo exists with at least one commit (needed for worktrees)
+        self._ensure_git_repo(project_root)
+
+        # Check if the branch already exists (e.g. kept from a previous retry)
+        branch_check = subprocess.run(
+            ["git", "rev-parse", "--verify", branch],
             cwd=project_root,
             capture_output=True,
             text=True,
             check=False,
         )
 
-        # Ensure a git repo exists with at least one commit (needed for worktrees)
-        self._ensure_git_repo(project_root)
+        if branch_check.returncode == 0:
+            # Reuse existing branch — reattach worktree to it
+            subprocess.run(
+                ["git", "worktree", "add", str(wt_path), branch],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        else:
+            # Fresh branch from current HEAD
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            base_commit = result.stdout.strip()
 
-        # Get current HEAD of main
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        base_commit = result.stdout.strip()
-
-        # Create worktree with new branch from that commit
-        subprocess.run(
-            ["git", "worktree", "add", "-b", branch, str(wt_path), base_commit],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+            subprocess.run(
+                ["git", "worktree", "add", "-b", branch, str(wt_path), base_commit],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
 
         return WorktreeInfo(task_id=task_id, path=wt_path, branch=branch)
 

@@ -148,11 +148,22 @@ class TestOrchestratorLoop:
         # Merge always fails for t1
         mock_merger.fail_tasks.add("t1")
 
+        mock_wt = MockWorktreeProvider(tmp_path / "wt")
+        # Track remove() calls
+        remove_calls: list[str] = []
+        original_remove = mock_wt.remove
+
+        def tracking_remove(task_id, project_root):
+            remove_calls.append(task_id)
+            return original_remove(task_id, project_root)
+
+        mock_wt.remove = tracking_remove  # type: ignore[assignment]
+
         orch = OrchestratorLoop(
             store=store,
             project_root=project_root,
             max_concurrency=1,
-            worktree_manager=MockWorktreeProvider(tmp_path / "wt"),
+            worktree_manager=mock_wt,
             agent_runner=mock_agent,
             merger=mock_merger,
             max_retries=1,
@@ -167,6 +178,9 @@ class TestOrchestratorLoop:
         # Second call should contain the merge error in the prompt
         assert "Mock merge failure for t1" in t1_calls[1]["prompt"]
         assert "Previous Attempt Failed" in t1_calls[1]["prompt"]
+
+        # remove() should only be called once — after final failure, not between retries
+        assert remove_calls == ["t1"]
 
         # After exhausting retries, task should be failed
         task = store.get_task("t1")

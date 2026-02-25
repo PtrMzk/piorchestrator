@@ -305,10 +305,9 @@ class OrchestratorLoop:
                 project_root=self.project_root,
             )
 
-            # Clean up the branch now that merge is done (success or fail)
-            self.worktree_mgr.remove(result.task_id, self.project_root)
-
             if merge_result.success:
+                # Branch is merged — clean up worktree and branch
+                self.worktree_mgr.remove(result.task_id, self.project_root)
                 self.store.set_completed(
                     result.task_id,
                     cost_usd=result.cost_usd,
@@ -324,6 +323,8 @@ class OrchestratorLoop:
                 # by set_running, so read it directly.
                 attempt = int(task["attempt"])
                 if attempt <= self.max_retries:
+                    # Keep the branch so retry agent builds on previous work
+                    # (detach already removed the worktree dir)
                     self.store.set_error_message(result.task_id, err)
                     self.store.set_status(result.task_id, STATUS_PENDING)
                     self._emit(
@@ -331,6 +332,8 @@ class OrchestratorLoop:
                         f"merge failed, attempt {attempt}/{self.max_retries}",
                     )
                 else:
+                    # No retries left — clean up branch
+                    self.worktree_mgr.remove(result.task_id, self.project_root)
                     self.store.set_failed(
                         result.task_id,
                         error_message=err,
