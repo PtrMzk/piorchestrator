@@ -83,7 +83,6 @@ class ClaudeCodeRunner:
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
             )
-            stdout_bytes, stderr_bytes = await proc.communicate()
         except FileNotFoundError:
             return AgentResult(
                 task_id=task_id,
@@ -92,32 +91,44 @@ class ClaudeCodeRunner:
                 duration_ms=int((time.monotonic() - start_time) * 1000),
             )
 
-        duration_ms = int((time.monotonic() - start_time) * 1000)
-
-        # Write raw log
-        if stdout_bytes:
-            log_file.write_bytes(stdout_bytes)
-
-        # Parse the stream-json output (last line with result)
-        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        # Stream stdout to log file in real-time while parsing result fields
         cost_usd: float | None = None
         result_text: str | None = None
         session_id: str | None = None
+        stderr_chunks: list[bytes] = []
 
-        # stream-json emits one JSON object per line
-        for line in stdout.strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        async def _drain_stderr() -> None:
+            assert proc.stderr is not None
+            async for chunk in proc.stderr:
+                stderr_chunks.append(chunk)
 
-            if msg.get("type") == "result":
-                result_text = msg.get("result", "")
-                cost_usd = msg.get("cost_usd")
-                session_id = msg.get("session_id")
+        stderr_task = asyncio.create_task(_drain_stderr())
+
+        assert proc.stdout is not None
+        with open(log_file, "wb") as fh:
+            async for raw_line in proc.stdout:
+                # Write each line to disk immediately
+                fh.write(raw_line)
+                fh.flush()
+
+                # Parse for result metadata
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if msg.get("type") == "result":
+                    result_text = msg.get("result", "")
+                    cost_usd = msg.get("cost_usd")
+                    session_id = msg.get("session_id")
+
+        await stderr_task
+        await proc.wait()
+        stderr_bytes = b"".join(stderr_chunks)
+
+        duration_ms = int((time.monotonic() - start_time) * 1000)
 
         success = proc.returncode == 0
         logger.debug(
@@ -151,7 +162,7 @@ class ClaudeCodeRunner:
                 success = False
 
         if not success and error_message is None:
-            stderr = stderr_bytes.decode("utf-8", errors="replace")
+            stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
             error_message = stderr or f"Agent exited with code {proc.returncode}"
 
         return AgentResult(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -16,11 +17,28 @@ def _jsonl(*dicts: dict) -> bytes:
     return "\n".join(json.dumps(d) for d in dicts).encode()
 
 
+class _AsyncLineIterator:
+    """Simulate an async readline iterator over bytes, splitting on newlines."""
+
+    def __init__(self, data: bytes) -> None:
+        self._lines = [line + b"\n" for line in data.split(b"\n") if line]
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> bytes:
+        if not self._lines:
+            raise StopAsyncIteration
+        return self._lines.pop(0)
+
+
 def _make_mock_process(
     stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0,
 ) -> AsyncMock:
     proc = AsyncMock()
-    proc.communicate.return_value = (stdout, stderr)
+    proc.stdout = _AsyncLineIterator(stdout)
+    proc.stderr = _AsyncLineIterator(stderr)
+    proc.wait = AsyncMock(return_value=returncode)
     proc.returncode = returncode
     return proc
 

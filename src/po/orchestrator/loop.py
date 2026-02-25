@@ -82,9 +82,19 @@ class OrchestratorLoop:
                 loop.remove_signal_handler(sig)
 
     def _request_shutdown(self) -> None:
-        """Handle shutdown signal — let current tasks finish but don't launch new ones."""
-        logger.info("Shutdown requested, finishing %d running task(s)", len(self._running_tasks))
-        self._shutting_down = True
+        """Handle shutdown signal — let current tasks finish but don't launch new ones.
+
+        First signal: graceful — wait for running tasks to finish.
+        Second signal: force — cancel all running tasks immediately.
+        """
+        if self._shutting_down:
+            # Second signal — force cancel
+            logger.info("Force shutdown, cancelling %d running task(s)", len(self._running_tasks))
+            for task in self._running_tasks.values():
+                task.cancel()
+        else:
+            logger.info("Shutdown requested, finishing %d running task(s)", len(self._running_tasks))
+            self._shutting_down = True
 
     async def _loop(self) -> None:
         """Core loop: find ready tasks, launch agents, collect results, merge."""
