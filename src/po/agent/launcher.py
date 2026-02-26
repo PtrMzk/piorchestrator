@@ -106,33 +106,50 @@ class ClaudeCodeRunner:
 
         stderr_task = asyncio.create_task(_drain_stderr())
 
-        assert proc.stdout is not None
-        with open(log_file, "wb") as fh:
-            async for raw_line in proc.stdout:
-                # Inject a timestamp into each JSON line
-                line = raw_line.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
-                try:
-                    msg = json.loads(line)
-                except json.JSONDecodeError:
-                    fh.write(raw_line)
+        try:
+            assert proc.stdout is not None
+            with open(log_file, "wb") as fh:
+                async for raw_line in proc.stdout:
+                    # Inject a timestamp into each JSON line
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except json.JSONDecodeError:
+                        fh.write(raw_line)
+                        fh.flush()
+                        continue
+
+                    msg["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    fh.write(json.dumps(msg).encode())
+                    fh.write(b"\n")
                     fh.flush()
-                    continue
 
-                msg["timestamp"] = datetime.now(timezone.utc).isoformat()
-                fh.write(json.dumps(msg).encode())
-                fh.write(b"\n")
-                fh.flush()
+                    # Parse for result metadata
+                    if msg.get("type") == "result":
+                        result_text = msg.get("result", "")
+                        cost_usd = msg.get("cost_usd")
+                        session_id = msg.get("session_id")
 
-                # Parse for result metadata
-                if msg.get("type") == "result":
-                    result_text = msg.get("result", "")
-                    cost_usd = msg.get("cost_usd")
-                    session_id = msg.get("session_id")
+            await stderr_task
+            await proc.wait()
+        except asyncio.CancelledError:
+            # Shutdown requested — terminate the subprocess
+            logger.info("Terminating agent subprocess for task %s", task_id)
+            try:
+                proc.terminate()
+                # Give it a moment to exit cleanly, then kill
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+            except ProcessLookupError:
+                pass  # Already exited
+            stderr_task.cancel()
+            raise
 
-        await stderr_task
-        await proc.wait()
         stderr_bytes = b"".join(stderr_chunks)
 
         duration_ms = int((time.monotonic() - start_time) * 1000)

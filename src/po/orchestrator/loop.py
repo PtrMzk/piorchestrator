@@ -82,19 +82,24 @@ class OrchestratorLoop:
                 loop.remove_signal_handler(sig)
 
     def _request_shutdown(self) -> None:
-        """Handle shutdown signal — let current tasks finish but don't launch new ones.
+        """Handle shutdown signal — cancel running tasks and shut down.
 
-        First signal: graceful — wait for running tasks to finish.
-        Second signal: force — cancel all running tasks immediately.
+        First signal: cancel all running tasks (subprocesses get terminated).
+        Second signal: force exit.
         """
         if self._shutting_down:
-            # Second signal — force cancel
-            logger.info("Force shutdown, cancelling %d running task(s)", len(self._running_tasks))
+            # Second signal — force exit
+            logger.info("Force shutdown requested")
+            import os
+            os._exit(1)
+        else:
+            logger.info(
+                "Shutdown requested, cancelling %d running task(s)",
+                len(self._running_tasks),
+            )
+            self._shutting_down = True
             for task in self._running_tasks.values():
                 task.cancel()
-        else:
-            logger.info("Shutdown requested, finishing %d running task(s)", len(self._running_tasks))
-            self._shutting_down = True
 
     async def _loop(self) -> None:
         """Core loop: find ready tasks, launch agents, collect results, merge."""
@@ -212,6 +217,15 @@ class OrchestratorLoop:
             async_task = self._running_tasks.pop(task_id)
             try:
                 result = async_task.result()
+            except asyncio.CancelledError:
+                logger.info("Task %s was cancelled", task_id)
+                if self._shutting_down:
+                    continue  # Skip processing — we're shutting down
+                result = AgentResult(
+                    task_id=task_id,
+                    success=False,
+                    error_message="Task cancelled",
+                )
             except Exception as e:
                 logger.warning("Task %s raised exception: %s", task_id, e)
                 result = AgentResult(
