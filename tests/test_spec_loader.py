@@ -200,4 +200,4 @@ class TestJsonSpecLoader:
             loader = JsonSpecLoader()
             spec = loader.load(example)
             assert spec.project_name == "todo-api"
-            assert len(spec.tasks) == 9
+            assert len(spec.tasks) == 12

@@ -64,12 +64,38 @@ _EXAMPLE_SPEC = """\
       "tags": ["database"]
     },
     {
+      "id": "doc-models",
+      "description": "Document the models module: API surface, purpose, and integration points",
+      "dependencies": ["define-models"],
+      "context_files": ["src/models.ts", "tests/models.test.ts"],
+      "output_files": ["docs/models.md"],
+      "verification": "test -f docs/models.md",
+      "priority": 7,
+      "model": "sonnet",
+      "max_budget_usd": 0.50,
+      "tags": ["docs"]
+    },
+    {
+      "id": "doc-db",
+      "description": "Document the database module: API surface, purpose, and integration points",
+      "dependencies": ["define-db"],
+      "context_files": ["src/database.ts", "tests/database.test.ts"],
+      "output_files": ["docs/database.md"],
+      "verification": "test -f docs/database.md",
+      "priority": 7,
+      "model": "sonnet",
+      "max_budget_usd": 0.50,
+      "tags": ["docs"]
+    },
+    {
       "id": "crud-endpoints",
       "description": "TDD: tests/routes.test.ts first, then CRUD in src/routes.ts",
       "dependencies": ["define-models", "define-db"],
       "context_files": [
         "src/models.ts",
-        "src/database.ts"
+        "src/database.ts",
+        "docs/models.md",
+        "docs/database.md"
       ],
       "output_files": ["src/routes.ts", "tests/routes.test.ts"],
       "verification": "bun test tests/routes.test.ts",
@@ -79,10 +105,22 @@ _EXAMPLE_SPEC = """\
       "tags": ["api", "crud"]
     },
     {
+      "id": "doc-routes",
+      "description": "Document the routes module: API surface, purpose, and integration points",
+      "dependencies": ["crud-endpoints"],
+      "context_files": ["src/routes.ts", "tests/routes.test.ts"],
+      "output_files": ["docs/routes.md"],
+      "verification": "test -f docs/routes.md",
+      "priority": 6,
+      "model": "sonnet",
+      "max_budget_usd": 0.50,
+      "tags": ["docs"]
+    },
+    {
       "id": "e2e-todo-crud",
       "description": "Playwright e2e test: user can add a todo and see it in the list",
       "dependencies": ["crud-endpoints"],
-      "context_files": ["src/routes.ts"],
+      "context_files": ["src/routes.ts", "docs/routes.md"],
       "output_files": ["tests/e2e/todo-crud.spec.ts"],
       "verification": "bunx playwright test tests/e2e/todo-crud.spec.ts",
       "priority": 5,
@@ -139,6 +177,12 @@ Constraints:
 - Verification commands should run the test suite (e.g. pytest, bun test)
 - Prefer TypeScript on Bun with built-in APIs over third-party packages
 - When a dependency is needed, only use well-known, actively maintained packages
+- For each implementation task (not setup/init, not e2e), generate a companion doc-<feature> task
+- Doc task depends on its parent and reads the parent's output_files as context_files
+- Doc task writes a single markdown file to docs/<feature>.md
+- Doc tasks use model "sonnet", low budget (0.50), tag ["docs"]
+- Subsequent implementation tasks should include relevant docs/*.md files in their context_files
+- Doc content scope: module's API surface, purpose, and integration points (keep concise)
 
 Here is a complete example of a valid spec:
 

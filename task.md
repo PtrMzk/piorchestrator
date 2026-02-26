@@ -167,11 +167,11 @@ handling, log tail parsing, status styles, and TTY detection.
 
 **Files:** `pyproject.toml`, `src/po/display/live.py`, `src/po/cli.py`, `tests/test_display.py`, `tests/test_cli.py`
 
-### 33. Auto-generate documentation tasks in specs
-During `po init`, for each implementation task generate a companion micro-task that
-documents what was built. The doc task depends on its implementation task, reads the
-implementation's `output_files` as `context_files`, and writes a doc file into a nested
-`docs/` tree (e.g. `docs/components/<feature>.md`). Subsequent implementation tasks should
-include relevant doc files in their `context_files` so agents have up-to-date knowledge
-of what's already been built. Keep doc tasks tiny — just summarize the module's API,
-purpose, and integration points.
+### ~~33. Auto-generate documentation tasks in specs~~ — DONE
+Added doc companion task constraints to init prompt and `_EXAMPLE_SPEC` (doc-models,
+doc-db, doc-routes). Doc tasks use sonnet model, 0.50 budget, ["docs"] tag, and write to
+`docs/<feature>.md`. Downstream implementation and e2e tasks include relevant doc files in
+`context_files`. Updated `examples/todo-api.json` with matching doc tasks. Added prompt
+assertion test.
+
+**Files:** `src/po/init/generator.py`, `examples/todo-api.json`, `tests/test_init.py`

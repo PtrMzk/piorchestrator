@@ -95,6 +95,12 @@ class TestBuildInitPrompt:
         assert "user_stories" in prompt
         assert "Playwright" in prompt or "playwright" in prompt
 
+    def test_contains_doc_task_constraints(self):
+        prompt = _build_init_prompt("test project")
+        assert "doc-" in prompt or "doc task" in prompt.lower()
+        assert "docs/" in prompt
+        assert "context_files" in prompt
+
 
 # --- generate_spec tests ---
 
