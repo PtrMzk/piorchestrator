@@ -551,6 +551,63 @@ class TestCmdClean:
 # ──────────────── _live_event_printer tests ────────────────
 
 
+class TestCmdRunDisplayMode:
+    def test_cmd_run_uses_live_display_on_tty(self, tmp_path: Path) -> None:
+        project_root, conn, _ = _setup_planned_project(tmp_path)
+        conn.close()
+
+        args = _make_namespace(
+            spec_file=None,
+            project_root=project_root,
+            concurrency=1,
+            max_retries=1,
+            model=None,
+            max_turns=None,
+        )
+
+        with (
+            patch("po.cli.OrchestratorLoop") as mock_loop_cls,
+            patch("po.cli.asyncio.run"),
+            patch("po.cli.sys.stdout") as mock_stdout,
+            patch("po.display.live.LiveDisplay.start"),
+            patch("po.display.live.LiveDisplay.stop"),
+        ):
+            mock_stdout.isatty.return_value = True
+            mock_loop_cls.return_value = MagicMock()
+            cmd_run(args)
+
+            # LiveDisplay should have been used as on_event callback
+            call_kwargs = mock_loop_cls.call_args[1]
+            from po.display.live import LiveDisplay
+            assert isinstance(call_kwargs["on_event"], LiveDisplay)
+
+    def test_cmd_run_uses_simple_printer_non_tty(self, tmp_path: Path) -> None:
+        project_root, conn, _ = _setup_planned_project(tmp_path)
+        conn.close()
+
+        args = _make_namespace(
+            spec_file=None,
+            project_root=project_root,
+            concurrency=1,
+            max_retries=1,
+            model=None,
+            max_turns=None,
+        )
+
+        with (
+            patch("po.cli.OrchestratorLoop") as mock_loop_cls,
+            patch("po.cli.asyncio.run"),
+            patch("po.cli.sys.stdout") as mock_stdout,
+        ):
+            mock_stdout.isatty.return_value = False
+            mock_loop_cls.return_value = MagicMock()
+            cmd_run(args)
+
+            # _live_event_printer should have been used
+            call_kwargs = mock_loop_cls.call_args[1]
+            assert call_kwargs["on_event"] is _live_event_printer
+
+
 class TestLiveEventPrinter:
     def test_known_events(self, capsys: pytest.CaptureFixture[str]) -> None:
         _live_event_printer("task_launched", "my-task", "starting")

@@ -351,6 +351,16 @@ def cmd_run(args: argparse.Namespace) -> None:
     model_override = args.model
     max_turns = args.max_turns or DEFAULT_MAX_TURNS
 
+    # Choose display mode based on TTY
+    live_display = None
+    if sys.stdout.isatty():
+        from po.display.live import LiveDisplay
+
+        live_display = LiveDisplay(store, project_root)
+        on_event = live_display
+    else:
+        on_event = _live_event_printer
+
     orchestrator = OrchestratorLoop(
         store=store,
         project_root=project_root,
@@ -358,7 +368,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         global_context=global_context,
         global_context_files=global_context_files,
         max_retries=max_retries,
-        on_event=_live_event_printer,
+        on_event=on_event,
         model_override=model_override,
         max_turns=max_turns,
     )
@@ -379,6 +389,9 @@ def cmd_run(args: argparse.Namespace) -> None:
     except FileNotFoundError:
         logger.debug("caffeinate not available (non-macOS?), skipping")
 
+    if live_display is not None:
+        live_display.start()
+
     try:
         asyncio.run(orchestrator.run())
     except RuntimeError as e:
@@ -387,6 +400,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     except KeyboardInterrupt:
         print("\nShutdown requested. Existing tasks will be preserved.")
     finally:
+        if live_display is not None:
+            live_display.stop()
         if caffeinate_proc is not None:
             caffeinate_proc.terminate()
             caffeinate_proc.wait()

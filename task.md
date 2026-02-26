@@ -157,14 +157,15 @@ to generate Playwright e2e tasks for each user story. Updated `examples/todo-api
 
 **Files:** `src/po/spec/schema.py`, `src/po/init/generator.py`, `examples/todo-api.json`
 
-### 32. Rich terminal UI with agent tree and live status
-Replace the simple `_live_event_printer` with a full-screen terminal UI (e.g. using
-`rich` or `blessed`). Show a tree of all tasks: pending (dimmed), running (spinner + last
-agent action), completed (green check), failed (red x). Update in real-time as events
-fire. The "last action" for running agents should be read from the tail of the agent's
-JSONL log file. Must still support non-TTY output (fall back to simple line printer).
+### ~~32. Rich terminal UI with agent tree and live status~~ — DONE
+Added `rich>=13.0` as first runtime dependency. Created `src/po/display/live.py` with
+`LiveDisplay` class that renders a Rich `Tree` with styled task nodes (status symbols,
+colors, spinners), reads last agent action from JSONL log tails, and uses `rich.live.Live`
+for 4Hz screen refresh. CLI detects TTY and uses LiveDisplay for terminals, falling back
+to `_live_event_printer` for piped output. 18 new tests covering tree building, event
+handling, log tail parsing, status styles, and TTY detection.
 
-**Files:** `src/po/display/`, `src/po/cli.py`, `src/po/orchestrator/loop.py`
+**Files:** `pyproject.toml`, `src/po/display/live.py`, `src/po/cli.py`, `tests/test_display.py`, `tests/test_cli.py`
 
 ### 33. Auto-generate documentation tasks in specs
 During `po init`, for each implementation task generate a companion micro-task that

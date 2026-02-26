@@ -1,0 +1,214 @@
+"""Rich Live terminal display for orchestration progress."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from rich.live import Live
+from rich.text import Text
+from rich.tree import Tree
+
+from po.config import logs_dir
+from po.db.queries import SqliteTaskStore
+
+# Status → (symbol, style)
+_STATUS_STYLES: dict[str, tuple[str, str]] = {
+    "pending": ("○", "dim"),
+    "running": ("◉", "bold cyan"),
+    "completed": ("✓", "green"),
+    "failed": ("✗", "bold red"),
+    "cancelled": ("⊘", "dim strike"),
+    "decomposed": ("◈", "blue"),
+}
+
+
+class LiveDisplay:
+    """Rich Live display that acts as an EventCallback (event, task_id, detail) -> None."""
+
+    def __init__(self, store: SqliteTaskStore, project_root: Path) -> None:
+        self._store = store
+        self._project_root = project_root
+        self._log_dir = logs_dir(project_root)
+        self._live: Live | None = None
+
+        # Internal state: task_id → {status, cost, error, description}
+        self._tasks: dict[str, dict[str, Any]] = {}
+        self._load_initial_state()
+
+    def _load_initial_state(self) -> None:
+        """Populate internal state from the store."""
+        for task in self._store.get_all_tasks():
+            tid = str(task["id"])
+            self._tasks[tid] = {
+                "status": task["status"],
+                "description": str(task["description"]),
+                "cost_usd": task.get("cost_usd"),
+                "error_message": task.get("error_message"),
+            }
+
+    def start(self) -> None:
+        """Enter the Rich Live context."""
+        self._live = Live(
+            self._build_tree(),
+            refresh_per_second=4,
+            console=None,
+        )
+        self._live.start()
+
+    def stop(self) -> None:
+        """Exit the Rich Live context."""
+        if self._live is not None:
+            # Final render with latest state
+            self._live.update(self._build_tree())
+            self._live.stop()
+            self._live = None
+
+    def __call__(self, event: str, task_id: str, detail: str) -> None:
+        """Handle an orchestration event — implements EventCallback signature."""
+        task_state = self._tasks.get(task_id)
+        if task_state is None:
+            task_state = {"status": "pending", "description": "", "cost_usd": None,
+                          "error_message": None}
+            self._tasks[task_id] = task_state
+
+        if event == "task_launched":
+            task_state["status"] = "running"
+        elif event == "task_completed":
+            task_state["status"] = "completed"
+            if detail:
+                task_state["cost_usd"] = detail
+        elif event == "task_failed":
+            task_state["status"] = "failed"
+            if detail:
+                task_state["error_message"] = detail
+        elif event == "task_retrying":
+            task_state["status"] = "running"
+        elif event == "task_decomposed":
+            task_state["status"] = "decomposed"
+        elif event == "task_cancelled":
+            task_state["status"] = "cancelled"
+
+        # Live auto-refresh handles screen updates via _build_tree
+        if self._live is not None:
+            self._live.update(self._build_tree())
+
+    def _build_tree(self) -> Tree:
+        """Build a Rich Tree representing all tasks."""
+        # Progress summary
+        counts: dict[str, int] = {}
+        for t in self._tasks.values():
+            s = t["status"]
+            counts[s] = counts.get(s, 0) + 1
+        total = len(self._tasks)
+        completed = counts.get("completed", 0)
+        running = counts.get("running", 0)
+
+        root_label = Text.assemble(
+            ("PO", "bold magenta"),
+            f"  {completed}/{total} done",
+            f"  {running} running",
+        )
+        tree = Tree(root_label)
+
+        # Separate top-level tasks from subtasks (subtasks have "/" in id)
+        top_level: list[str] = []
+        children: dict[str, list[str]] = {}  # parent_id → [child_ids]
+
+        for tid in sorted(self._tasks.keys()):
+            if "/" in tid:
+                parent = tid.rsplit("/", 1)[0]
+                children.setdefault(parent, []).append(tid)
+            else:
+                top_level.append(tid)
+
+        for tid in top_level:
+            node = self._add_task_node(tree, tid)
+            for child_id in children.get(tid, []):
+                self._add_task_node(node, child_id)
+
+        # Any orphan subtasks whose parent isn't in top_level
+        for parent_id, child_ids in children.items():
+            if parent_id not in self._tasks or "/" in parent_id:
+                for child_id in child_ids:
+                    self._add_task_node(tree, child_id)
+
+        return tree
+
+    def _add_task_node(self, parent: Tree, task_id: str) -> Tree:
+        """Add a single task node to the tree."""
+        task = self._tasks[task_id]
+        status = task["status"]
+        symbol, style = _STATUS_STYLES.get(status, ("?", ""))
+
+        # Build the label
+        label = Text()
+        label.append(f"{symbol} ", style=style)
+
+        # Show short display id (just the leaf part for subtasks)
+        display_id = task_id.rsplit("/", 1)[-1] if "/" in task_id else task_id
+        label.append(display_id, style=style)
+
+        # Extra info based on status
+        if status == "running":
+            action = self._read_last_action(task_id)
+            label.append(f"  {action}", style="dim")
+        elif status == "completed":
+            cost = task.get("cost_usd")
+            if cost is not None:
+                label.append(f"  ${cost}", style="dim green")
+        elif status == "failed":
+            error = task.get("error_message")
+            if error:
+                truncated = str(error)[:60]
+                label.append(f"  {truncated}", style="dim red")
+
+        return parent.add(label)
+
+    def _read_last_action(self, task_id: str) -> str:
+        """Read the last agent action from the task's JSONL log."""
+        log_file = self._log_dir / f"{task_id}.jsonl"
+        if not log_file.exists():
+            return "starting..."
+
+        try:
+            # Read last 4KB of the file
+            size = log_file.stat().st_size
+            read_size = min(size, 4096)
+            with open(log_file, "rb") as f:
+                if size > read_size:
+                    f.seek(size - read_size)
+                chunk = f.read().decode("utf-8", errors="replace")
+        except OSError:
+            return "starting..."
+
+        # Parse lines backwards looking for the most recent assistant message
+        lines = chunk.strip().splitlines()
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if msg.get("type") != "assistant":
+                continue
+
+            content = msg.get("message", {}).get("content")
+            if isinstance(content, list):
+                # Look for tool_use blocks first (reverse order)
+                for block in reversed(content):
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        return f"[tool] {block.get('name', '?')}"
+                # Fallback to last text block
+                for block in reversed(content):
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text", "")
+                        return text[:60] if text else "..."
+            elif isinstance(content, str) and content:
+                return content[:60]
+
+        return "working..."

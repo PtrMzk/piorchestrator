@@ -1,9 +1,15 @@
-"""Tests for display/status formatting functions."""
+"""Tests for display/status formatting functions and LiveDisplay."""
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
+from rich.tree import Tree
+
+from po.display.live import _STATUS_STYLES, LiveDisplay  # noqa: N811
 from po.display.status import (
     format_cost_summary,
     format_execution_plan,
@@ -190,3 +196,183 @@ class TestFormatProgressSummary:
     def test_empty_list(self) -> None:
         result = format_progress_summary([])
         assert "0/0 completed" in result
+
+
+# ──────────────── LiveDisplay tests ────────────────
+
+
+def _mock_store(tasks: list[dict[str, Any]] | None = None) -> MagicMock:
+    """Create a mock SqliteTaskStore with get_all_tasks returning given tasks."""
+    store = MagicMock()
+    store.get_all_tasks.return_value = tasks or []
+    return store
+
+
+class TestLiveDisplayBuildTree:
+    def test_build_tree_returns_tree(self, tmp_path: Path) -> None:
+        store = _mock_store([
+            _make_task(id="task-a", status="pending"),
+            _make_task(id="task-b", status="running"),
+        ])
+        display = LiveDisplay(store, tmp_path)
+        tree = display._build_tree()
+        assert isinstance(tree, Tree)
+
+    def test_build_tree_correct_node_count(self, tmp_path: Path) -> None:
+        store = _mock_store([
+            _make_task(id="task-a", status="pending"),
+            _make_task(id="task-b", status="completed"),
+            _make_task(id="task-c", status="failed"),
+        ])
+        display = LiveDisplay(store, tmp_path)
+        tree = display._build_tree()
+        # 3 top-level task nodes
+        assert len(tree.children) == 3
+
+    def test_build_tree_nests_subtasks(self, tmp_path: Path) -> None:
+        store = _mock_store([
+            _make_task(id="parent", status="decomposed"),
+            _make_task(id="parent/sub-1", status="running"),
+            _make_task(id="parent/sub-2", status="pending"),
+        ])
+        display = LiveDisplay(store, tmp_path)
+        tree = display._build_tree()
+        # Only 1 top-level node (parent), with 2 children
+        assert len(tree.children) == 1
+        assert len(tree.children[0].children) == 2
+
+    def test_build_tree_progress_in_label(self, tmp_path: Path) -> None:
+        store = _mock_store([
+            _make_task(id="a", status="completed"),
+            _make_task(id="b", status="pending"),
+        ])
+        display = LiveDisplay(store, tmp_path)
+        tree = display._build_tree()
+        label_text = tree.label.plain  # type: ignore[union-attr]
+        assert "1/2 done" in label_text
+
+
+class TestLiveDisplayEventUpdatesState:
+    def test_launched_sets_running(self, tmp_path: Path) -> None:
+        store = _mock_store([_make_task(id="task-a", status="pending")])
+        display = LiveDisplay(store, tmp_path)
+        display("task_launched", "task-a", "")
+        assert display._tasks["task-a"]["status"] == "running"
+
+    def test_completed_sets_completed_with_cost(self, tmp_path: Path) -> None:
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        display("task_completed", "task-a", "$0.05")
+        assert display._tasks["task-a"]["status"] == "completed"
+        assert display._tasks["task-a"]["cost_usd"] == "$0.05"
+
+    def test_failed_sets_failed_with_error(self, tmp_path: Path) -> None:
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        display("task_failed", "task-a", "Boom")
+        assert display._tasks["task-a"]["status"] == "failed"
+        assert display._tasks["task-a"]["error_message"] == "Boom"
+
+    def test_decomposed_event(self, tmp_path: Path) -> None:
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        display("task_decomposed", "task-a", "")
+        assert display._tasks["task-a"]["status"] == "decomposed"
+
+    def test_event_for_unknown_task_creates_entry(self, tmp_path: Path) -> None:
+        store = _mock_store([])
+        display = LiveDisplay(store, tmp_path)
+        display("task_launched", "new-task", "")
+        assert "new-task" in display._tasks
+        assert display._tasks["new-task"]["status"] == "running"
+
+
+class TestLiveDisplayReadLastAction:
+    def test_read_last_action_tool_use(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / ".po" / "logs"
+        log_dir.mkdir(parents=True)
+        log_file = log_dir / "task-a.jsonl"
+        msg = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "I will write a file"},
+                    {"type": "tool_use", "name": "write_file", "input": {}},
+                ],
+            },
+        }
+        log_file.write_text(json.dumps(msg) + "\n")
+
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        action = display._read_last_action("task-a")
+        assert "[tool] write_file" in action
+
+    def test_read_last_action_text_fallback(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / ".po" / "logs"
+        log_dir.mkdir(parents=True)
+        log_file = log_dir / "task-a.jsonl"
+        msg = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "Analyzing the codebase"},
+                ],
+            },
+        }
+        log_file.write_text(json.dumps(msg) + "\n")
+
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        action = display._read_last_action("task-a")
+        assert "Analyzing the codebase" in action
+
+    def test_read_last_action_no_log(self, tmp_path: Path) -> None:
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        action = display._read_last_action("task-a")
+        assert action == "starting..."
+
+    def test_read_last_action_empty_log(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / ".po" / "logs"
+        log_dir.mkdir(parents=True)
+        (log_dir / "task-a.jsonl").write_text("")
+
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        action = display._read_last_action("task-a")
+        assert action == "working..."
+
+    def test_read_last_action_string_content(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / ".po" / "logs"
+        log_dir.mkdir(parents=True)
+        log_file = log_dir / "task-a.jsonl"
+        msg = {
+            "type": "assistant",
+            "message": {"content": "Simple string content"},
+        }
+        log_file.write_text(json.dumps(msg) + "\n")
+
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        action = display._read_last_action("task-a")
+        assert "Simple string content" in action
+
+
+class TestLiveDisplayStatusStyles:
+    def test_all_statuses_have_styles(self) -> None:
+        expected = {"pending", "running", "completed", "failed", "cancelled", "decomposed"}
+        assert set(_STATUS_STYLES.keys()) == expected
+
+    def test_each_status_has_symbol_and_style(self) -> None:
+        for status, (symbol, style) in _STATUS_STYLES.items():
+            assert len(symbol) > 0, f"{status} has empty symbol"
+            assert len(style) > 0, f"{status} has empty style"
+
+    def test_specific_symbols(self) -> None:
+        assert _STATUS_STYLES["pending"][0] == "○"
+        assert _STATUS_STYLES["running"][0] == "◉"
+        assert _STATUS_STYLES["completed"][0] == "✓"
+        assert _STATUS_STYLES["failed"][0] == "✗"
+        assert _STATUS_STYLES["cancelled"][0] == "⊘"
+        assert _STATUS_STYLES["decomposed"][0] == "◈"
