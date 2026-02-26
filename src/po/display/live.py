@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -190,8 +191,10 @@ class LiveDisplay:
 
         # Extra info based on status
         if status == "running":
-            action = self._read_last_action(task_id)
+            action, ts = self._read_last_action(task_id)
             label.append(f"  {action}", style="dim")
+            if ts:
+                label.append(f"  ({ts})", style="dim italic")
         elif status == "completed":
             cost = task.get("cost_usd")
             if cost is not None:
@@ -204,11 +207,14 @@ class LiveDisplay:
 
         return parent.add(label)
 
-    def _read_last_action(self, task_id: str) -> str:
-        """Read the last agent action from the task's JSONL log."""
+    def _read_last_action(self, task_id: str) -> tuple[str, str]:
+        """Read the last agent action from the task's JSONL log.
+
+        Returns (action_text, relative_time) where relative_time is e.g. "5s ago".
+        """
         log_file = self._log_dir / f"{task_id}.jsonl"
         if not log_file.exists():
-            return "starting..."
+            return "starting...", ""
 
         try:
             # Read last 4KB of the file
@@ -219,7 +225,7 @@ class LiveDisplay:
                     f.seek(size - read_size)
                 chunk = f.read().decode("utf-8", errors="replace")
         except OSError:
-            return "starting..."
+            return "starting...", ""
 
         # Parse lines backwards looking for the most recent assistant message
         lines = chunk.strip().splitlines()
@@ -235,18 +241,40 @@ class LiveDisplay:
             if msg.get("type") != "assistant":
                 continue
 
+            ts = _format_relative_time(msg.get("timestamp"))
             content = msg.get("message", {}).get("content")
             if isinstance(content, list):
                 # Look for tool_use blocks first (reverse order)
                 for block in reversed(content):
                     if isinstance(block, dict) and block.get("type") == "tool_use":
-                        return f"[tool] {block.get('name', '?')}"
+                        return f"[tool] {block.get('name', '?')}", ts
                 # Fallback to last text block
                 for block in reversed(content):
                     if isinstance(block, dict) and block.get("type") == "text":
                         text = block.get("text", "")
-                        return text[:60] if text else "..."
+                        return (text[:60] if text else "..."), ts
             elif isinstance(content, str) and content:
-                return content[:60]
+                return content[:60], ts
 
-        return "working..."
+        return "working...", ""
+
+
+def _format_relative_time(timestamp: str | None) -> str:
+    """Format an ISO timestamp as a relative time string like '5s ago'."""
+    if not timestamp:
+        return ""
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        delta = datetime.now(UTC) - dt
+        secs = int(delta.total_seconds())
+        if secs < 0:
+            return ""
+        if secs < 60:
+            return f"{secs}s ago"
+        mins = secs // 60
+        if mins < 60:
+            return f"{mins}m ago"
+        hours = mins // 60
+        return f"{hours}h ago"
+    except (ValueError, TypeError):
+        return ""

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 from rich.tree import Tree
 
-from po.display.live import _STATUS_STYLES, LiveDisplay  # noqa: N811
+from po.display.live import _STATUS_STYLES, LiveDisplay, _format_relative_time
 from po.display.status import (
     format_cost_summary,
     format_execution_plan,
@@ -336,7 +337,7 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action = display._read_last_action("task-a")
+        action, ts = display._read_last_action("task-a")
         assert "[tool] write_file" in action
 
     def test_read_last_action_text_fallback(self, tmp_path: Path) -> None:
@@ -355,14 +356,15 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action = display._read_last_action("task-a")
+        action, ts = display._read_last_action("task-a")
         assert "Analyzing the codebase" in action
 
     def test_read_last_action_no_log(self, tmp_path: Path) -> None:
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action = display._read_last_action("task-a")
+        action, ts = display._read_last_action("task-a")
         assert action == "starting..."
+        assert ts == ""
 
     def test_read_last_action_empty_log(self, tmp_path: Path) -> None:
         log_dir = tmp_path / ".po" / "logs"
@@ -371,8 +373,9 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action = display._read_last_action("task-a")
+        action, ts = display._read_last_action("task-a")
         assert action == "working..."
+        assert ts == ""
 
     def test_read_last_action_string_content(self, tmp_path: Path) -> None:
         log_dir = tmp_path / ".po" / "logs"
@@ -386,8 +389,56 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action = display._read_last_action("task-a")
+        action, ts = display._read_last_action("task-a")
         assert "Simple string content" in action
+
+    def test_read_last_action_with_timestamp(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / ".po" / "logs"
+        log_dir.mkdir(parents=True)
+        log_file = log_dir / "task-a.jsonl"
+        recent = datetime.now(UTC) - timedelta(seconds=30)
+        msg = {
+            "type": "assistant",
+            "timestamp": recent.isoformat(),
+            "message": {
+                "content": [
+                    {"type": "tool_use", "name": "bash", "input": {}},
+                ],
+            },
+        }
+        log_file.write_text(json.dumps(msg) + "\n")
+
+        store = _mock_store([_make_task(id="task-a", status="running")])
+        display = LiveDisplay(store, tmp_path)
+        action, ts = display._read_last_action("task-a")
+        assert action == "[tool] bash"
+        assert "s ago" in ts
+
+
+class TestFormatRelativeTime:
+    def test_none_returns_empty(self) -> None:
+        assert _format_relative_time(None) == ""
+
+    def test_empty_string_returns_empty(self) -> None:
+        assert _format_relative_time("") == ""
+
+    def test_seconds_ago(self) -> None:
+        ts = (datetime.now(UTC) - timedelta(seconds=15)).isoformat()
+        result = _format_relative_time(ts)
+        assert "s ago" in result
+
+    def test_minutes_ago(self) -> None:
+        ts = (datetime.now(UTC) - timedelta(minutes=3)).isoformat()
+        result = _format_relative_time(ts)
+        assert result == "3m ago"
+
+    def test_hours_ago(self) -> None:
+        ts = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        result = _format_relative_time(ts)
+        assert result == "2h ago"
+
+    def test_invalid_timestamp(self) -> None:
+        assert _format_relative_time("not-a-date") == ""
 
 
 class TestLiveDisplayStatusStyles:
