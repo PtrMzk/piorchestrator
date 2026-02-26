@@ -220,36 +220,67 @@ class TestLiveDisplayBuildTree:
 
     def test_build_tree_correct_node_count(self, tmp_path: Path) -> None:
         store = _mock_store([
-            _make_task(id="task-a", status="pending"),
-            _make_task(id="task-b", status="completed"),
-            _make_task(id="task-c", status="failed"),
+            _make_task(id="task-a", status="pending", dependencies="[]"),
+            _make_task(id="task-b", status="completed", dependencies="[]"),
+            _make_task(id="task-c", status="failed", dependencies="[]"),
         ])
         display = LiveDisplay(store, tmp_path)
         tree = display._build_tree()
-        # 3 top-level task nodes
-        assert len(tree.children) == 3
+        # All 3 tasks have no deps → 1 layer branch with 3 task nodes
+        assert len(tree.children) == 1
+        assert len(tree.children[0].children) == 3
 
     def test_build_tree_nests_subtasks(self, tmp_path: Path) -> None:
         store = _mock_store([
-            _make_task(id="parent", status="decomposed"),
+            _make_task(id="parent", status="decomposed", dependencies="[]"),
             _make_task(id="parent/sub-1", status="running"),
             _make_task(id="parent/sub-2", status="pending"),
         ])
         display = LiveDisplay(store, tmp_path)
         tree = display._build_tree()
-        # Only 1 top-level node (parent), with 2 children
-        assert len(tree.children) == 1
-        assert len(tree.children[0].children) == 2
+        # 1 layer branch → 1 parent node → 2 subtask children
+        assert len(tree.children) == 1  # Layer 0
+        layer_branch = tree.children[0]
+        assert len(layer_branch.children) == 1  # parent
+        assert len(layer_branch.children[0].children) == 2  # sub-1, sub-2
 
     def test_build_tree_progress_in_label(self, tmp_path: Path) -> None:
         store = _mock_store([
-            _make_task(id="a", status="completed"),
-            _make_task(id="b", status="pending"),
+            _make_task(id="a", status="completed", dependencies="[]"),
+            _make_task(id="b", status="pending", dependencies="[]"),
         ])
         display = LiveDisplay(store, tmp_path)
         tree = display._build_tree()
         label_text = tree.label.plain  # type: ignore[union-attr]
         assert "1/2 done" in label_text
+
+    def test_build_tree_groups_by_dependency_layer(self, tmp_path: Path) -> None:
+        store = _mock_store([
+            _make_task(id="init", status="completed", dependencies="[]"),
+            _make_task(id="models", status="pending", dependencies='["init"]'),
+            _make_task(id="db", status="pending", dependencies='["init"]'),
+            _make_task(id="routes", status="pending", dependencies='["models", "db"]'),
+        ])
+        display = LiveDisplay(store, tmp_path)
+        tree = display._build_tree()
+        # 3 layers: [init], [models, db], [routes]
+        assert len(tree.children) == 3
+        # Layer 0: init
+        assert len(tree.children[0].children) == 1
+        # Layer 1: db, models (sorted alphabetically)
+        assert len(tree.children[1].children) == 2
+        # Layer 2: routes
+        assert len(tree.children[2].children) == 1
+
+    def test_build_tree_layer_labels(self, tmp_path: Path) -> None:
+        store = _mock_store([
+            _make_task(id="a", status="pending", dependencies="[]"),
+            _make_task(id="b", status="pending", dependencies='["a"]'),
+        ])
+        display = LiveDisplay(store, tmp_path)
+        tree = display._build_tree()
+        for i, child in enumerate(tree.children):
+            assert f"Layer {i}" in child.label.plain  # type: ignore[union-attr]
 
 
 class TestLiveDisplayEventUpdatesState:

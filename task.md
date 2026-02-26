@@ -167,6 +167,15 @@ handling, log tail parsing, status styles, and TTY detection.
 
 **Files:** `pyproject.toml`, `src/po/display/live.py`, `src/po/cli.py`, `tests/test_display.py`, `tests/test_cli.py`
 
+### ~~34. Dependency-layered tree in LiveDisplay~~ — DONE
+`_build_tree()` now computes BFS layers from task dependencies and renders each layer as
+a labeled branch (`Layer 0`, `Layer 1`, ...). Tasks with no deps appear in Layer 0,
+dependent tasks in subsequent layers. Subtasks still nest under their parent within the
+parent's layer. Dynamic tasks with unknown deps fall into a fallback group. Three new
+tests added for layer grouping, labels, and updated node counts.
+
+**Files:** `src/po/display/live.py`, `tests/test_display.py`
+
 ### ~~33. Auto-generate documentation tasks in specs~~ — DONE
 Added doc companion task constraints to init prompt and `_EXAMPLE_SPEC` (doc-models,
 doc-db, doc-routes). Doc tasks use sonnet model, 0.50 budget, ["docs"] tag, and write to

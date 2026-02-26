@@ -41,11 +41,14 @@ class LiveDisplay:
         """Populate internal state from the store."""
         for task in self._store.get_all_tasks():
             tid = str(task["id"])
+            deps_raw = task.get("dependencies", "[]")
+            deps = json.loads(deps_raw) if isinstance(deps_raw, str) else deps_raw
             self._tasks[tid] = {
                 "status": task["status"],
                 "description": str(task["description"]),
                 "cost_usd": task.get("cost_usd"),
                 "error_message": task.get("error_message"),
+                "dependencies": deps,
             }
 
     def start(self) -> None:
@@ -70,7 +73,7 @@ class LiveDisplay:
         task_state = self._tasks.get(task_id)
         if task_state is None:
             task_state = {"status": "pending", "description": "", "cost_usd": None,
-                          "error_message": None}
+                          "error_message": None, "dependencies": []}
             self._tasks[task_id] = task_state
 
         if event == "task_launched":
@@ -95,7 +98,7 @@ class LiveDisplay:
             self._live.update(self._build_tree())
 
     def _build_tree(self) -> Tree:
-        """Build a Rich Tree representing all tasks."""
+        """Build a Rich Tree representing all tasks grouped by dependency layer."""
         # Progress summary
         counts: dict[str, int] = {}
         for t in self._tasks.values():
@@ -123,12 +126,47 @@ class LiveDisplay:
             else:
                 top_level.append(tid)
 
-        for tid in top_level:
-            node = self._add_task_node(tree, tid)
-            for child_id in children.get(tid, []):
-                self._add_task_node(node, child_id)
+        # Compute BFS layers for top-level tasks
+        top_set = set(top_level)
+        remaining = set(top_level)
+        layer_done: set[str] = set()
+        layers: list[list[str]] = []
+        fallback: list[str] = []
 
-        # Any orphan subtasks whose parent isn't in top_level
+        while remaining:
+            layer: list[str] = []
+            for tid in sorted(remaining):
+                deps = self._tasks[tid].get("dependencies", [])
+                # Only consider deps that are in top_set (ignore unknown)
+                relevant_deps = [d for d in deps if d in top_set]
+                if all(d in layer_done for d in relevant_deps):
+                    layer.append(tid)
+            if not layer:
+                # Remaining tasks have unresolvable deps — put in fallback
+                fallback = sorted(remaining)
+                break
+            for tid in layer:
+                remaining.remove(tid)
+                layer_done.add(tid)
+            layers.append(layer)
+
+        # Render each layer as a branch
+        for i, layer_tasks in enumerate(layers):
+            layer_branch = tree.add(Text(f"Layer {i}", style="bold"))
+            for tid in layer_tasks:
+                node = self._add_task_node(layer_branch, tid)
+                for child_id in children.get(tid, []):
+                    self._add_task_node(node, child_id)
+
+        # Fallback group for unresolvable tasks
+        if fallback:
+            fallback_branch = tree.add(Text("Unresolved", style="bold dim"))
+            for tid in fallback:
+                node = self._add_task_node(fallback_branch, tid)
+                for child_id in children.get(tid, []):
+                    self._add_task_node(node, child_id)
+
+        # Orphan subtasks whose parent isn't in top_level
         for parent_id, child_ids in children.items():
             if parent_id not in self._tasks or "/" in parent_id:
                 for child_id in child_ids:
