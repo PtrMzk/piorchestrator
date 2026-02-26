@@ -93,6 +93,60 @@ class RebaseMerger:
             project_root,
         )
 
+    def _run_verification(
+        self,
+        verification: str,
+        task_id: str,
+        project_root: Path,
+        after_agent: bool = False,
+    ) -> MergeResult | None:
+        """Run a verification command and return a failure MergeResult, or None on success.
+
+        Logs full stdout/stderr to .po/logs/verify-<task_id>.log for debugging.
+        """
+        if not verification:
+            return None
+
+        logger.debug("Running verification for %s: %s", task_id, verification)
+        verify_result = subprocess.run(
+            verification,
+            shell=True,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+        )
+
+        # Always write verification output to a log file
+        log_dir = logs_dir(project_root)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        verify_log = log_dir / f"verify-{task_id}.log"
+        with open(verify_log, "w") as fh:
+            fh.write(f"Command: {verification}\n")
+            fh.write(f"Exit code: {verify_result.returncode}\n")
+            fh.write(f"--- stdout ---\n{verify_result.stdout}\n")
+            fh.write(f"--- stderr ---\n{verify_result.stderr}\n")
+
+        if verify_result.returncode == 0:
+            return None
+
+        logger.warning("Verification failed for %s, reverting merge", task_id)
+        self._run_git(["reset", "--hard", "HEAD~1"], project_root)
+
+        detail = verify_result.stderr or verify_result.stdout or "(no output)"
+        # Truncate to last 500 chars to keep error messages readable
+        if len(detail) > 500:
+            detail = "..." + detail[-500:]
+        prefix = (
+            "Post-merge verification failed after agent resolution"
+            if after_agent
+            else "Post-merge verification failed"
+        )
+        return MergeResult(
+            success=False,
+            error_message=f"{prefix} (cmd: {verification}): {detail}",
+            needed_agent_resolution=after_agent,
+        )
+
     def _merge_sync(
         self,
         branch: str,
@@ -140,26 +194,9 @@ class RebaseMerger:
             )
 
         # Step 3: Run verification if specified
-        if verification:
-            logger.debug("Running verification for %s: %s", task_id, verification)
-            verify_result = subprocess.run(
-                verification,
-                shell=True,
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-            )
-            if verify_result.returncode != 0:
-                # Revert the merge
-                logger.warning("Verification failed for %s, reverting merge", task_id)
-                self._run_git(["reset", "--hard", "HEAD~1"], project_root)
-                return MergeResult(
-                    success=False,
-                    error_message=(
-                    "Post-merge verification failed: "
-                    f"{verify_result.stderr or verify_result.stdout}"
-                ),
-                )
+        fail = self._run_verification(verification, task_id, project_root)
+        if fail:
+            return fail
 
         logger.debug("Merge succeeded for %s", task_id)
         return MergeResult(success=True)
@@ -208,20 +245,11 @@ class RebaseMerger:
                 )
 
         # Run verification
-        if verification:
-            verify_result = subprocess.run(
-                verification, shell=True, cwd=project_root,
-                capture_output=True, text=True,
-            )
-            if verify_result.returncode != 0:
-                self._run_git(["reset", "--hard", "HEAD~1"], project_root)
-                return MergeResult(
-                    success=False,
-                    error_message=(
-                        "Post-merge verification failed after agent resolution: "
-                        f"{verify_result.stderr or verify_result.stdout}"
-                    ),
-                )
+        fail = self._run_verification(
+            verification, task_id, project_root, after_agent=True,
+        )
+        if fail:
+            return fail
 
         return MergeResult(success=True, needed_agent_resolution=True)
 
