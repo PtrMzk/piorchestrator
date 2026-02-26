@@ -83,6 +83,7 @@ class ClaudeCodeRunner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                limit=16 * 1024 * 1024,  # 16 MB — stream-json lines can be large
             )
         except FileNotFoundError:
             return AgentResult(
