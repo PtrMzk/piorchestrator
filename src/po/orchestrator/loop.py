@@ -389,6 +389,8 @@ class OrchestratorLoop:
                 task = self.store.get_task(result.task_id) or task
             attempt = int(task["attempt"])
             if attempt <= self.max_retries:
+                err = result.error_message or "Agent failed"
+                self.store.set_error_message(result.task_id, err)
                 self.store.set_status(result.task_id, STATUS_PENDING)
                 # Clean up worktree for retry
                 self.worktree_mgr.remove(result.task_id, self.project_root)
@@ -398,6 +400,7 @@ class OrchestratorLoop:
                 )
             else:
                 err = result.error_message or "Agent failed"
+                self.worktree_mgr.remove(result.task_id, self.project_root)
                 self.store.set_failed(
                     result.task_id,
                     error_message=err,

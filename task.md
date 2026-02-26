@@ -184,3 +184,12 @@ doc-db, doc-routes). Doc tasks use sonnet model, 0.50 budget, ["docs"] tag, and 
 assertion test.
 
 **Files:** `src/po/init/generator.py`, `examples/todo-api.json`, `tests/test_init.py`
+
+### ~~35. Level 3 e2e tests with scripted agent~~ — DONE
+Created `ScriptedAgentRunner` that writes real files and makes real git commits in real
+worktrees, replacing only the Claude subprocess. Six e2e test scenarios cover linear chains,
+diamond DAGs, failure cascading, subtask decomposition, agent failure retry with error
+context, and event callback ordering. Fixed two bugs found during testing: worktree cleanup
+on agent failure without retries, and error message propagation for agent failure retries.
+
+**Files:** `tests/e2e_support.py`, `tests/test_e2e.py`, `src/po/orchestrator/loop.py`
