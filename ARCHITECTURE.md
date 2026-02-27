@@ -11,11 +11,27 @@ Piorchestrator (`po`) is a **multi-agent orchestrator** that coordinates paralle
 ### 1. `po init <description>` — Spec Generation
 Converts a plain-English project description into a structured JSON spec by prompting Claude. The generated spec includes tasks, dependencies, output files, and verification commands. It enforces conventions like TDD (tests in output files), doc companion tasks, and a DAG structure.
 
+**Code walkthrough:**
+1. `cli.py:cmd_init` → calls `init/generator.py:generate_spec(description, output, model)`
+2. `generate_spec` builds a detailed system prompt with JSON schema + a full example spec via `_build_init_prompt()`
+3. `_invoke_claude()` spawns `claude -p <prompt> --output-format stream-json` synchronously, streams JSONL to `.po/logs/init.jsonl`, extracts the `result` message
+4. `_extract_json()` strips markdown fences / preamble to get raw JSON
+5. Validates through `ProjectSpec.from_dict()` + `spec.validate()` (checks duplicate IDs, missing deps, cycles)
+6. Writes pretty-printed JSON to the output file
+
 ### 2. `po plan <spec.json>` — Validation & Planning
 Loads and validates a spec (checks for duplicate IDs, cycles, missing dependencies), persists it to a SQLite database (`.po/state.db`), and displays the execution plan as dependency layers. Optional flags:
 - `--scaffold` — generates stub files for all `output_files` with language-aware placeholder comments
 - `--generate-docs` — creates a documentation tree (`CLAUDE.md`, `SYSTEM_DESIGN.md`, component docs)
 - `--playground` — generates a self-testing calculator spec to demo the tool
+
+**Code walkthrough:**
+1. `cli.py:cmd_plan` — if `--playground`, calls `playground/generator.py:generate_playground()` to create a spec + seed files
+2. `spec/loader.py:JsonSpecLoader.load()` parses JSON → `spec/schema.py:ProjectSpec.from_dict()` → `spec.validate()` (duplicate IDs, missing dep refs, cycle detection via `graph/resolver.py:topological_sort`)
+3. `graph/resolver.py:get_execution_plan()` groups tasks into BFS layers where each layer's deps are satisfied by prior layers — displayed via `display/status.py:format_execution_plan()`
+4. `db/connection.py:init_db()` opens SQLite in WAL mode, runs DDL from `db/models.py`
+5. `db/queries.py:SqliteTaskStore.save_spec()` upserts project metadata + all tasks (preserves runtime state for re-plans via `ON CONFLICT DO UPDATE`)
+6. Optionally: `scaffold/generator.py:generate_scaffolds()` creates stub files; `docs/generator.py:generate_doc_tree()` creates doc files
 
 ### 3. `po run [spec.json]` — The Orchestration Loop (core business logic)
 This is the heart of the system. The async loop:
@@ -34,16 +50,68 @@ This is the heart of the system. The async loop:
 
 Key design: tasks that write to the same files are serialized, while tasks with no file overlap run fully in parallel up to `--concurrency`.
 
+**Code walkthrough — startup (`cli.py:cmd_run`):**
+1. If a spec file is given, auto-runs `cmd_plan` first
+2. Opens the DB, reads project metadata + checks for non-terminal tasks
+3. If TTY, creates `display/live.py:LiveDisplay` (Rich Live at 4Hz); otherwise uses a simple `_live_event_printer` callback
+4. Constructs `orchestrator/loop.py:OrchestratorLoop` with store, worktree manager, agent runner, merger (all protocol-based, defaulting to real implementations)
+5. Spawns `caffeinate -i -s` to prevent macOS sleep, then `asyncio.run(orchestrator.run())`
+
+**Code walkthrough — the async loop (`orchestrator/loop.py:OrchestratorLoop`):**
+1. `run()` installs SIGINT/SIGTERM handlers → `_request_shutdown()` (first signal cancels asyncio tasks; second calls `os._exit`)
+2. `_loop()` runs in a `while True`:
+   - `_collect_completed()` — iterates `_running_tasks` dict, pops `.done()` asyncio Tasks, extracts `AgentResult` (catching `CancelledError` + exceptions)
+   - `store.get_ready_task_ids()` — SQL query using `json_each()` to find pending tasks whose every dependency is completed (`db/queries.py:242-258`)
+   - `_filter_output_overlap()` — computes the set of `output_files` for all running tasks, excludes ready tasks that intersect. Within a batch, tracks `batch_outputs` to prevent intra-iteration overlap too
+   - For each task up to `slots` remaining: `asyncio.create_task(self._run_task(task_id))`
+   - Deadlock check: if no running, no ready, but still non-terminal → `RuntimeError`
+   - `asyncio.wait(..., timeout=5.0, return_when=FIRST_COMPLETED)` — wakes when any agent finishes
+
+**Code walkthrough — running a single task (`_run_task`):**
+1. `worktree/manager.py:GitWorktreeManager.create()` — prunes stale worktrees, ensures git repo, checks if branch `po/{task_id}` exists (retry reuses branch), otherwise `git worktree add -b po/{task_id} .po/worktrees/{task_id}/ HEAD`
+2. `store.set_running()` — marks DB status=running, increments attempt counter, records branch/worktree path
+3. Reads `context_files` (prefers worktree copy for retry continuity, falls back to project root) + `global_context_files`
+4. `agent/prompt_builder.py:build_prompt()` — assembles markdown prompt: task description, previous error (for retries), global context, reference file contents, expected outputs, verification command, TDD rules, subtask/failure instructions
+5. `agent/launcher.py:ClaudeCodeRunner.run()` — spawns `claude -p <prompt> --output-format stream-json --model <model> --max-turns <N> --permission-mode bypassPermissions` in the worktree dir. Streams stdout to `.po/logs/{task_id}.jsonl` (injecting timestamps). Drains stderr concurrently. On `CancelledError`, sends SIGTERM → wait 5s → SIGKILL. Checks for `.po-subtasks.json` and `.po-failure.json` in worktree after exit. Returns `AgentResult`
+
+**Code walkthrough — processing results (`_process_result`):**
+- **Success path:**
+  1. `worktree_mgr.detach()` — `git worktree remove --force` + `git worktree prune` (frees the branch for checkout)
+  2. `orchestrator/merge.py:RebaseMerger.merge()` — serialized by `asyncio.Lock`, runs in executor:
+     - Cleans stale rebase/merge state, checks out main
+     - `git rebase main po/{task_id}` → on success: `git checkout main` → `git merge --ff-only po/{task_id}`
+     - If rebase fails: aborts, falls back to `_try_agent_merge()` → `git merge --no-ff --no-commit` → if conflicts, `_invoke_merge_agent()` spawns another Claude CLI to resolve conflict markers, stage files, commit
+     - Runs verification command; on failure: `git reset --hard HEAD~1` (reverts merge)
+  3. On merge success: `worktree_mgr.remove()` (deletes branch), `store.set_completed()`
+  4. On merge failure with retries left: keeps branch, sets task back to pending
+- **Subtask path:** namespaces IDs as `{parent}/{subtask}`, inherits parent deps, `store.add_runtime_task()`, marks parent `decomposed`
+- **Failure path:** if retries left → `store.set_status(pending)`, cleans worktree; else → `store.set_failed()`, `store.cancel_dependents()` (BFS cascade)
+
 ### 4. `po status` / `po cost` / `po logs <id>` — Monitoring
 - **status**: table of all tasks with their state, cost, and any error messages
 - **cost**: per-task and total cost summary
 - **logs**: streams the agent's JSONL log (supports `--raw` and `--tail`)
 
+**Code walkthrough:**
+- All three: `cli.py` → open DB → `SqliteTaskStore.get_all_tasks()` → formatter from `display/status.py`
+- `cmd_logs`: reads `.po/logs/{task_id}.jsonl` directly, parses each JSON line by `type` field (`assistant` → text/tool_use blocks, `tool_result` → truncated output, `result` → cost/duration summary). Applies `--tail` slicing. `--raw` skips parsing and dumps lines verbatim
+
 ### 5. `po reset [--task ID]` — Recovery
 Resets `failed`/`cancelled` tasks back to `pending`, cascading to dependents. Preserves the git branch so retry agents can build on previous work.
 
+**Code walkthrough:**
+1. `cli.py:cmd_reset` → `db/queries.py:SqliteTaskStore.reset_task(task_id)`
+2. `_reset_single()` — sets status=pending, clears error/cost/timing/worktree fields (only for failed/cancelled/running tasks)
+3. BFS cascade: walks all tasks, finds cancelled dependents of the reset task, resets them too
+4. Git branches are *not* deleted — the next `po run` reuses the existing `po/{task_id}` branch via `git worktree add <path> <existing-branch>`
+
 ### 6. `po clean` — Cleanup
 Removes orphaned git worktrees that weren't properly cleaned up.
+
+**Code walkthrough:**
+1. `cli.py:cmd_clean` → `worktree/manager.py:GitWorktreeManager.list()` — scans `.po/worktrees/` for directories
+2. If DB exists, loads all tasks in terminal status (completed/failed/cancelled)
+3. For each worktree whose `task_id` is terminal (or no DB): `GitWorktreeManager.remove()` → `git worktree remove --force` + `git worktree prune` + `git branch -D po/{task_id}`
 
 ---
 
