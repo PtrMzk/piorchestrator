@@ -57,7 +57,7 @@ class TestTaskSpec:
     def test_from_dict_defaults(self) -> None:
         task = TaskSpec.from_dict({"id": "t1", "description": "Test"})
         assert task.dependencies == []
-        assert task.model == "sonnet"
+        assert task.model == "haiku"
         assert task.max_budget_usd == 2.0
 
 

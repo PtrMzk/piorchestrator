@@ -218,9 +218,9 @@ class LiveDisplay:
             return "starting...", ""
 
         try:
-            # Read last 4KB of the file
+            # Read last 32KB of the file (tool_result blocks can be large)
             size = log_file.stat().st_size
-            read_size = min(size, 4096)
+            read_size = min(size, 32768)
             with open(log_file, "rb") as f:
                 if size > read_size:
                     f.seek(size - read_size)

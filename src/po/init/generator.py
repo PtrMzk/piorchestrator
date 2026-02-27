@@ -22,7 +22,7 @@ _EXAMPLE_SPEC = """\
 {
   "project_name": "todo-api",
   "description": "REST API for a todo list",
-  "default_model": "opus",
+  "default_model": "haiku",
   "max_concurrency": 5,
   "global_context": "TypeScript on Bun. Prefer built-in Bun APIs. Only well-known deps.",
   "global_context_files": ["README.md"],
@@ -39,7 +39,7 @@ _EXAMPLE_SPEC = """\
       ],
       "verification": "bun test --timeout 5000",
       "priority": 10,
-      "model": "opus",
+      "model": "haiku",
       "max_budget_usd": 1.0,
       "tags": ["setup"]
     },
@@ -51,7 +51,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["src/models.ts", "tests/models.test.ts"],
       "verification": "bun test tests/models.test.ts",
       "priority": 9,
-      "model": "opus",
+      "model": "haiku",
       "max_budget_usd": 1.0,
       "tags": ["models"]
     },
@@ -63,7 +63,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["src/database.ts", "tests/database.test.ts"],
       "verification": "bun test tests/database.test.ts",
       "priority": 9,
-      "model": "opus",
+      "model": "haiku",
       "max_budget_usd": 1.0,
       "tags": ["database"]
     },
@@ -75,7 +75,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["docs/models.md"],
       "verification": "test -f docs/models.md",
       "priority": 7,
-      "model": "sonnet",
+      "model": "haiku",
       "max_budget_usd": 0.50,
       "tags": ["docs"]
     },
@@ -87,7 +87,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["docs/database.md"],
       "verification": "test -f docs/database.md",
       "priority": 7,
-      "model": "sonnet",
+      "model": "haiku",
       "max_budget_usd": 0.50,
       "tags": ["docs"]
     },
@@ -104,7 +104,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["src/routes.ts", "tests/routes.test.ts"],
       "verification": "bun test tests/routes.test.ts",
       "priority": 8,
-      "model": "opus",
+      "model": "haiku",
       "max_budget_usd": 1.0,
       "tags": ["api", "crud"]
     },
@@ -116,7 +116,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["docs/routes.md"],
       "verification": "test -f docs/routes.md",
       "priority": 6,
-      "model": "sonnet",
+      "model": "haiku",
       "max_budget_usd": 0.50,
       "tags": ["docs"]
     },
@@ -128,7 +128,7 @@ _EXAMPLE_SPEC = """\
       "output_files": ["tests/e2e/todo-crud.spec.ts"],
       "verification": "bunx playwright test tests/e2e/todo-crud.spec.ts",
       "priority": 5,
-      "model": "opus",
+      "model": "haiku",
       "max_budget_usd": 1.0,
       "tags": ["e2e", "playwright"]
     }
@@ -222,7 +222,7 @@ def _spec_schema_instructions() -> str:
 The spec must be a JSON object with these fields:
 - "project_name" (string, required): short kebab-case identifier
 - "description" (string): one-line summary
-- "default_model" (string): model for tasks, use "opus"
+- "default_model" (string): model for tasks, use "haiku"
 - "max_concurrency" (integer): how many tasks can run in parallel, typically 5
 - "global_context" (string): shared instructions for all tasks
 - "global_context_files" (list of strings): files all tasks should read
@@ -237,7 +237,7 @@ Each task object has:
 - "output_files" (list of strings): files the task will create or modify
 - "verification" (string): shell command to verify the task succeeded
 - "priority" (integer): higher runs first among independent tasks (10 = highest)
-- "model" (string): "opus" for most tasks, "sonnet" for simple ones
+- "model" (string): "haiku" for most tasks, "haiku" for simple ones
 - "max_budget_usd" (float): cost cap per task, typically 1.0
 - "tags" (list of strings): categorical labels
 
@@ -259,7 +259,7 @@ Constraints:
 - For each implementation task (not setup/init, not e2e), generate a companion doc-<feature> task
 - Doc task depends on its parent and reads the parent's output_files as context_files
 - Doc task writes a single markdown file to docs/<feature>.md
-- Doc tasks use model "sonnet", low budget (0.50), tag ["docs"]
+- Doc tasks use model "haiku", low budget (0.50), tag ["docs"]
 - Subsequent implementation tasks should include relevant docs/*.md files in their context_files
 - Doc content scope: module's API surface, purpose, and integration points (keep concise)
 

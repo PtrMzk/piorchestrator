@@ -20,7 +20,7 @@ class TaskSpec:
     output_files: list[str] = field(default_factory=list)
     verification: str = ""
     priority: int = 0
-    model: str = "sonnet"
+    model: str = "haiku"
     max_budget_usd: float = 2.0
     tags: list[str] = field(default_factory=list)
 
@@ -60,7 +60,7 @@ class ProjectSpec:
     project_name: str
     tasks: list[TaskSpec]
     description: str = ""
-    default_model: str = "opus"
+    default_model: str = "haiku"
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY
     global_context: str = ""
     global_context_files: list[str] = field(default_factory=list)
@@ -105,7 +105,7 @@ class ProjectSpec:
         tasks = [TaskSpec.from_dict(t) for t in tasks_data]
 
         # Apply default_model to tasks that don't override it
-        default_model = data.get("default_model", "opus")
+        default_model = data.get("default_model", "haiku")
         for i, task_data in enumerate(tasks_data):
             if "model" not in task_data:
                 tasks[i].model = default_model
