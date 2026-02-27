@@ -9,6 +9,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from rich.console import Console
+
 from po.config import logs_dir
 from po.spec.schema import ProjectSpec
 
@@ -217,6 +219,7 @@ def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) ->
 
     result_text: str | None = None
     assert proc.stdout is not None
+    stderr = Console(stderr=True)
 
     fh = open(log_file, "wb") if log_file else None
     try:
@@ -237,6 +240,21 @@ def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) ->
                 fh.write(json.dumps(msg).encode())
                 fh.write(b"\n")
                 fh.flush()
+
+            if msg.get("type") == "assistant":
+                content = msg.get("message", {}).get("content")
+                if isinstance(content, list):
+                    for block in content:
+                        if block.get("type") == "tool_use":
+                            stderr.print(f"  [dim cyan][tool][/] [dim]{block.get('name', '?')}[/]")
+                        elif block.get("type") == "text":
+                            text = block.get("text", "").strip()
+                            if text:
+                                line = text.split("\n")[0][:100]
+                                stderr.print(f"  [dim]> {line}[/]")
+                elif isinstance(content, str) and content.strip():
+                    line = content.strip().split("\n")[0][:100]
+                    stderr.print(f"  [dim]> {line}[/]")
 
             if msg.get("type") == "result":
                 result_text = msg.get("result", "")

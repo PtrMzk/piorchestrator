@@ -14,7 +14,7 @@ Converts a plain-English project description into a structured JSON spec by prom
 **Code walkthrough:**
 1. `cli.py:cmd_init` → calls `init/generator.py:generate_spec(description, output, model)`
 2. `generate_spec` builds a detailed system prompt with JSON schema + a full example spec via `_build_init_prompt()`
-3. `_invoke_claude()` spawns `claude -p <prompt> --output-format stream-json` synchronously, streams JSONL to `.po/logs/init.jsonl`, extracts the `result` message
+3. `_invoke_claude()` spawns `claude -p <prompt> --output-format stream-json` synchronously, streams JSONL to `.po/logs/init.jsonl`, prints dim progress to stderr (text snippets and tool calls from assistant messages), extracts the `result` message
 4. `_extract_json()` strips markdown fences / preamble to get raw JSON
 5. Validates through `ProjectSpec.from_dict()` + `spec.validate()` (checks duplicate IDs, missing deps, cycles)
 6. Writes pretty-printed JSON to the output file
