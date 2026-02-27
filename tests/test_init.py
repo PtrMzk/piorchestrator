@@ -7,7 +7,14 @@ from unittest.mock import patch
 
 import pytest
 
-from po.init.generator import _build_init_prompt, _extract_json, generate_spec
+from po.init.generator import (
+    _build_init_prompt,
+    _build_outline_prompt,
+    _extract_json,
+    generate_outline,
+    generate_spec,
+    generate_spec_from_outline,
+)
 
 # --- _extract_json tests ---
 
@@ -204,3 +211,116 @@ class TestGenerateSpec:
 
         mock.assert_called_once()
         assert mock.call_args[0][1] == "opus"
+
+
+# --- _build_outline_prompt tests ---
+
+
+class TestBuildOutlinePrompt:
+    """Tests for _build_outline_prompt."""
+
+    def test_contains_description(self):
+        prompt = _build_outline_prompt("a REST API for todos")
+        assert "a REST API for todos" in prompt
+
+    def test_does_not_ask_for_json(self):
+        prompt = _build_outline_prompt("test project")
+        assert "Do NOT generate JSON" in prompt
+
+    def test_asks_for_markdown(self):
+        prompt = _build_outline_prompt("test project")
+        assert "markdown" in prompt.lower()
+
+    def test_feedback_included_when_provided(self):
+        prompt = _build_outline_prompt("test project", feedback="Add auth tasks")
+        assert "Add auth tasks" in prompt
+        assert "feedback" in prompt.lower()
+
+    def test_no_feedback_section_when_none(self):
+        prompt = _build_outline_prompt("test project")
+        assert "Previous outline was rejected" not in prompt
+
+
+# --- generate_outline tests ---
+
+
+class TestGenerateOutline:
+    """Tests for generate_outline."""
+
+    def test_returns_claude_response(self):
+        outline_text = "## Project: my-app\n- init-project\n- add-feature"
+        with patch("po.init.generator._invoke_claude", return_value=outline_text):
+            result = generate_outline("build an app")
+        assert result == outline_text
+
+    def test_passes_model(self):
+        with patch("po.init.generator._invoke_claude", return_value="outline") as mock:
+            generate_outline("test", model="sonnet")
+        assert mock.call_args[0][1] == "sonnet"
+
+    def test_passes_feedback(self):
+        with patch("po.init.generator._invoke_claude", return_value="outline") as mock:
+            generate_outline("test", feedback="add more tasks")
+        prompt = mock.call_args[0][0]
+        assert "add more tasks" in prompt
+
+    def test_claude_failure_propagates(self):
+        with (
+            patch(
+                "po.init.generator._invoke_claude",
+                side_effect=RuntimeError("Claude CLI failed"),
+            ),
+            pytest.raises(RuntimeError, match="Claude CLI failed"),
+        ):
+            generate_outline("test")
+
+
+# --- generate_spec_from_outline tests ---
+
+
+class TestGenerateSpecFromOutline:
+    """Tests for generate_spec_from_outline."""
+
+    VALID_SPEC = TestGenerateSpec.VALID_SPEC
+
+    def test_generates_spec_from_outline(self, tmp_path):
+        output = tmp_path / "spec.json"
+        outline = "## Project: calc\n- init\n- add-ops"
+        raw_response = json.dumps(self.VALID_SPEC)
+
+        with patch("po.init.generator._invoke_claude", return_value=raw_response):
+            result = generate_spec_from_outline("a calculator", outline, output)
+
+        assert result == output
+        assert output.exists()
+        written = json.loads(output.read_text())
+        assert written["project_name"] == "calc"
+
+    def test_outline_included_in_prompt(self, tmp_path):
+        output = tmp_path / "spec.json"
+        outline = "## Project: calc\n- init\n- add-ops"
+        raw_response = json.dumps(self.VALID_SPEC)
+
+        with patch("po.init.generator._invoke_claude", return_value=raw_response) as mock:
+            generate_spec_from_outline("a calculator", outline, output)
+
+        prompt = mock.call_args[0][0]
+        assert outline in prompt
+
+    def test_file_exists_raises(self, tmp_path):
+        output = tmp_path / "spec.json"
+        output.write_text("{}")
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            generate_spec_from_outline("test", "outline", output)
+
+    def test_invalid_spec_raises(self, tmp_path):
+        output = tmp_path / "spec.json"
+        bad_spec = {"project_name": "", "tasks": []}
+        raw_response = json.dumps(bad_spec)
+
+        with (
+            patch("po.init.generator._invoke_claude", return_value=raw_response),
+            pytest.raises(ValueError, match="failed validation"),
+        ):
+            generate_spec_from_outline("test", "outline", output)

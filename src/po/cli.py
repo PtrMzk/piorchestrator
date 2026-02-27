@@ -12,7 +12,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from po.config import DEFAULT_MAX_TURNS, TERMINAL_STATUSES, ensure_po_gitignore, logs_dir, state_db_path
+from po.config import (
+    DEFAULT_MAX_TURNS,
+    TERMINAL_STATUSES,
+    ensure_po_gitignore,
+    logs_dir,
+    state_db_path,
+)
 from po.db.connection import init_db
 from po.db.queries import SqliteTaskStore
 from po.display.status import (
@@ -23,7 +29,11 @@ from po.display.status import (
 )
 from po.docs.generator import generate_doc_tree
 from po.graph.resolver import get_execution_plan
-from po.init.generator import generate_spec
+from po.init.generator import (
+    generate_outline,
+    generate_spec,
+    generate_spec_from_outline,
+)
 from po.orchestrator.loop import OrchestratorLoop
 from po.playground.generator import generate_playground
 from po.scaffold.generator import generate_scaffolds
@@ -83,12 +93,12 @@ def main() -> None:
         help="Generate a self-testing playground spec for quick verification",
     )
     plan_parser.add_argument(
-        "--scaffold", action="store_true",
-        help="Generate stub files for all output_files in the spec",
+        "--scaffold", action=argparse.BooleanOptionalAction, default=True,
+        help="Generate stub files for all output_files in the spec (default: on)",
     )
     plan_parser.add_argument(
-        "--generate-docs", action="store_true",
-        help="Generate documentation tree",
+        "--generate-docs", action=argparse.BooleanOptionalAction, default=True,
+        help="Generate documentation tree (default: on)",
     )
 
     # po run
@@ -179,6 +189,10 @@ def main() -> None:
     init_parser.add_argument(
         "--model", type=str, default="opus",
         help="Claude model to use (default: opus)",
+    )
+    init_parser.add_argument(
+        "--project-root", type=Path, default=Path("."),
+        help="Project root directory",
     )
 
     args = parser.parse_args()
@@ -310,8 +324,8 @@ def cmd_run(args: argparse.Namespace) -> None:
             spec_file=args.spec_file.resolve(),
             project_root=args.project_root,
             playground=False,
-            scaffold=False,
-            generate_docs=False,
+            scaffold=True,
+            generate_docs=True,
         )
         cmd_plan(plan_args)
         print()
@@ -618,22 +632,66 @@ def cmd_init(args: argparse.Namespace) -> None:
     output: Path = args.output
     model: str = args.model
     description: str = args.description
+    project_root: Path = args.project_root.resolve()
+    interactive = sys.stdin.isatty()
 
-    print(f"Generating spec from description (model={model})...")
-    try:
-        path = generate_spec(description, output, model)
-    except FileExistsError as e:
-        logger.error("%s", e)
-        sys.exit(1)
-    except ValueError as e:
-        logger.error("%s", e)
-        sys.exit(1)
-    except RuntimeError as e:
-        logger.error("%s", e)
-        sys.exit(1)
+    if not interactive:
+        # Non-interactive: generate spec directly (no outline review)
+        print(f"Generating spec from description (model={model})...")
+        try:
+            path = generate_spec(description, output, model, project_root=project_root)
+        except (FileExistsError, ValueError, RuntimeError) as e:
+            logger.error("%s", e)
+            sys.exit(1)
+    else:
+        # Interactive: outline → review → full spec
+        feedback: str | None = None
+        while True:
+            if feedback:
+                print(f"\nRevising outline with feedback (model={model})...")
+            else:
+                print(f"Generating outline (model={model})...")
+
+            try:
+                outline = generate_outline(
+                    description, model, project_root=project_root, feedback=feedback,
+                )
+            except RuntimeError as e:
+                logger.error("%s", e)
+                sys.exit(1)
+
+            print()
+            print(outline)
+            print()
+
+            response = input("Looks good? [Y/n] or type feedback: ").strip()
+            if not response or response.lower() in ("y", "yes"):
+                break
+            if response.lower() in ("n", "no"):
+                response = input("What should change? ").strip()
+            feedback = response
+
+        print(f"\nGenerating full spec from outline (model={model})...")
+        try:
+            path = generate_spec_from_outline(
+                description, outline, output, model, project_root=project_root,
+            )
+        except (FileExistsError, ValueError, RuntimeError) as e:
+            logger.error("%s", e)
+            sys.exit(1)
 
     print(f"Spec written to {path}")
     print()
-    print("Next steps:")
-    print(f"  po plan {path}        # review the execution plan")
-    print(f"  po run {path}         # run the orchestration")
+
+    # Auto-plan: validate spec, show execution plan, persist to DB
+    plan_args = argparse.Namespace(
+        spec_file=path.resolve(),
+        project_root=args.project_root,
+        playground=False,
+        scaffold=True,
+        generate_docs=True,
+    )
+    cmd_plan(plan_args)
+    print()
+    print("Next step:")
+    print("  po run                # run the orchestration")

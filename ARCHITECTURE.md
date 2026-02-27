@@ -8,21 +8,24 @@ Piorchestrator (`po`) is a **multi-agent orchestrator** that coordinates paralle
 
 ## Major Entry Points (CLI Commands)
 
-### 1. `po init <description>` — Spec Generation
-Converts a plain-English project description into a structured JSON spec by prompting Claude. The generated spec includes tasks, dependencies, output files, and verification commands. It enforces conventions like TDD (tests in output files), doc companion tasks, and a DAG structure.
+### 1. `po init <description>` — Spec Generation & Planning (combined)
+Converts a plain-English project description into a structured JSON spec, then automatically validates, plans, scaffolds, and generates docs (i.e. runs `po plan` logic). In interactive terminals, uses a two-phase flow: first generates a human-readable outline for user review, then produces the full JSON spec after approval. Users can provide feedback to revise the outline before committing.
 
-**Code walkthrough:**
-1. `cli.py:cmd_init` → calls `init/generator.py:generate_spec(description, output, model)`
-2. `generate_spec` builds a detailed system prompt with JSON schema + a full example spec via `_build_init_prompt()`
-3. `_invoke_claude()` spawns `claude -p <prompt> --output-format stream-json` synchronously, streams JSONL to `.po/logs/init.jsonl`, prints dim progress to stderr (text snippets and tool calls from assistant messages), extracts the `result` message
-4. `_extract_json()` strips markdown fences / preamble to get raw JSON
-5. Validates through `ProjectSpec.from_dict()` + `spec.validate()` (checks duplicate IDs, missing deps, cycles)
-6. Writes pretty-printed JSON to the output file
+**Code walkthrough (interactive mode):**
+1. `cli.py:cmd_init` → calls `init/generator.py:generate_outline(description, model, feedback=None)`
+2. `generate_outline` builds a prompt via `_build_outline_prompt()` asking for a markdown outline (task names, descriptions, dependencies, layers) — NOT JSON
+3. `_invoke_claude()` spawns Claude CLI, returns the outline text
+4. User reviews outline, types `y` to approve or provides feedback to revise
+5. On approval: `generate_spec_from_outline(description, outline, output, model)` builds a prompt combining the approved outline with `_spec_schema_instructions()` (JSON schema, constraints, example spec)
+6. `_invoke_claude()` generates JSON, `_extract_json()` strips fences, `ProjectSpec.from_dict()` validates
+7. Auto-runs `cmd_plan` logic: validation, execution plan display, DB persistence, scaffold generation, doc tree creation
+
+**Non-interactive mode** (piped stdin): skips the outline review loop and generates the full spec directly via `generate_spec()`.
 
 ### 2. `po plan <spec.json>` — Validation & Planning
-Loads and validates a spec (checks for duplicate IDs, cycles, missing dependencies), persists it to a SQLite database (`.po/state.db`), and displays the execution plan as dependency layers. Optional flags:
-- `--scaffold` — generates stub files for all `output_files` with language-aware placeholder comments
-- `--generate-docs` — creates a documentation tree (`CLAUDE.md`, `SYSTEM_DESIGN.md`, component docs)
+Loads and validates a spec (checks for duplicate IDs, cycles, missing dependencies), persists it to a SQLite database (`.po/state.db`), and displays the execution plan as dependency layers. Scaffold and doc generation are on by default:
+- `--no-scaffold` — skip generating stub files for all `output_files`
+- `--no-generate-docs` — skip generating documentation tree (`CLAUDE.md`, `SYSTEM_DESIGN.md`, component docs)
 - `--playground` — generates a self-testing calculator spec to demo the tool
 
 **Code walkthrough:**

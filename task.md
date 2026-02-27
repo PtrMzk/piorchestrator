@@ -193,3 +193,14 @@ context, and event callback ordering. Fixed two bugs found during testing: workt
 on agent failure without retries, and error message propagation for agent failure retries.
 
 **Files:** `tests/e2e_support.py`, `tests/test_e2e.py`, `src/po/orchestrator/loop.py`
+
+### ~~36. Combine po init + po plan into one step~~ — DONE
+`po init` now auto-runs `cmd_plan` after spec generation (validation, execution plan display,
+DB persistence, scaffold, docs). Interactive terminals get a two-phase flow: outline review
+with user feedback loop, then full spec generation from the approved outline. Non-interactive
+mode falls back to direct spec generation. `po plan` now defaults `--scaffold` and
+`--generate-docs` to on (use `--no-scaffold`/`--no-generate-docs` to opt out). Added
+`generate_outline()`, `generate_spec_from_outline()`, and `_build_outline_prompt()` to the
+generator. 12 new tests for outline generation and spec-from-outline flow.
+
+**Files:** `src/po/cli.py`, `src/po/init/generator.py`, `tests/test_init.py`

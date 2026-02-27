@@ -135,13 +135,86 @@ _EXAMPLE_SPEC = """\
 }"""
 
 
-def _build_init_prompt(description: str) -> str:
-    """Build the prompt that asks Claude to generate a PO spec."""
-    return f"""\
-Generate a valid PO orchestrator spec JSON file for the following project description:
+def _build_outline_prompt(description: str, feedback: str | None = None) -> str:
+    """Build a prompt that asks Claude for a high-level spec outline."""
+    base = f"""\
+Given this project description, generate a high-level execution plan outline.
 
+Project description:
 {description}
 
+Show the outline in this format:
+- Project name (kebab-case)
+- One-line description
+- Tech stack / global context
+- User stories (extracted from description)
+- Tasks grouped by execution layer, where each task shows:
+  - Task ID (kebab-case)
+  - Brief description (1 line)
+  - Dependencies (task IDs)
+  - Key output files
+
+Guidelines:
+- Break work into small, focused tasks
+- Start with a setup/init task
+- Follow TDD: feature tasks should write tests first
+- Include doc companion tasks for implementation tasks
+- Include Playwright e2e tasks for user stories
+- Dependencies must form a DAG (no cycles)
+
+Do NOT generate JSON. Return a readable markdown outline only."""
+
+    if feedback:
+        base += f"""
+
+Previous outline was rejected. User feedback:
+{feedback}
+
+Please incorporate the feedback and generate an updated outline."""
+
+    return base
+
+
+def generate_outline(
+    description: str,
+    model: str = "opus",
+    project_root: Path | None = None,
+    feedback: str | None = None,
+) -> str:
+    """Generate a high-level spec outline from a description.
+
+    Args:
+        description: Plain English project description.
+        model: Claude model to use.
+        project_root: Project root for log output.
+        feedback: Optional user feedback on a previous outline.
+
+    Returns:
+        Markdown outline string.
+    """
+    prompt = _build_outline_prompt(description, feedback)
+    return _invoke_claude(prompt, model, project_root=project_root)
+
+
+def _build_spec_from_outline_prompt(description: str, outline: str) -> str:
+    """Build prompt to generate the full JSON spec from an approved outline."""
+    return f"""\
+Generate a valid PO orchestrator spec JSON file based on the approved outline below.
+
+Original project description:
+{description}
+
+Approved outline:
+{outline}
+
+{_spec_schema_instructions()}
+
+Return ONLY the JSON object, no markdown fences or explanation."""
+
+
+def _spec_schema_instructions() -> str:
+    """Return the shared schema and constraint instructions for spec generation."""
+    return f"""\
 The spec must be a JSON object with these fields:
 - "project_name" (string, required): short kebab-case identifier
 - "description" (string): one-line summary
@@ -188,7 +261,61 @@ Constraints:
 
 Here is a complete example of a valid spec:
 
-{_EXAMPLE_SPEC}
+{_EXAMPLE_SPEC}"""
+
+
+def generate_spec_from_outline(
+    description: str,
+    outline: str,
+    output: Path,
+    model: str = "opus",
+    project_root: Path | None = None,
+) -> Path:
+    """Generate a full PO spec JSON from an approved outline.
+
+    Args:
+        description: Original project description.
+        outline: Approved markdown outline.
+        output: Path to write the spec JSON file.
+        model: Claude model to use.
+        project_root: Project root for log output.
+
+    Returns:
+        The path the spec was written to.
+
+    Raises:
+        FileExistsError: If the output file already exists.
+        ValueError: If the generated spec fails validation.
+        RuntimeError: If the Claude CLI invocation fails.
+    """
+    if output.exists():
+        raise FileExistsError(f"Output file already exists: {output}")
+
+    root = project_root or output.parent.resolve()
+
+    prompt = _build_spec_from_outline_prompt(description, outline)
+    raw = _invoke_claude(prompt, model, project_root=root)
+    data = _extract_json(raw)
+
+    # Validate through ProjectSpec
+    spec = ProjectSpec.from_dict(data)
+    errors = spec.validate()
+    if errors:
+        raise ValueError(f"Generated spec failed validation: {'; '.join(errors)}")
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return output
+
+
+def _build_init_prompt(description: str) -> str:
+    """Build the prompt that asks Claude to generate a PO spec."""
+    return f"""\
+Generate a valid PO orchestrator spec JSON file for the following project description:
+
+{description}
+
+{_spec_schema_instructions()}
 
 Return ONLY the JSON object, no markdown fences or explanation."""
 
