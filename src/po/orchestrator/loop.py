@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import signal
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from po.config import (
     STATUS_DECOMPOSED,
     STATUS_PENDING,
     TERMINAL_STATUSES,
+    logs_dir,
 )
 from po.db.queries import AgentResult, SqliteTaskStore
 from po.orchestrator.merge import MergeResult, MergeStrategy, RebaseMerger
@@ -313,6 +315,38 @@ class OrchestratorLoop:
             return
 
         if result.success:
+            # Run verification in the worktree before merging so the agent
+            # can retry with a clear error if verification fails.
+            verification = (
+                str(task["verification"]) if task["verification"] else ""
+            )
+            worktree_path = str(task["worktree_path"]) if task["worktree_path"] else ""
+            if verification and worktree_path:
+                preverify_fail = await self._run_preverify(
+                    verification, result.task_id, Path(worktree_path),
+                )
+                if preverify_fail is not None:
+                    attempt = int(task["attempt"])
+                    if attempt <= self.max_retries:
+                        self.store.set_error_message(result.task_id, preverify_fail)
+                        self.store.set_status(result.task_id, STATUS_PENDING)
+                        self._emit(
+                            "task_retrying", result.task_id,
+                            f"pre-merge verification failed, attempt {attempt}/{self.max_retries}",
+                        )
+                    else:
+                        self.worktree_mgr.remove(result.task_id, self.project_root)
+                        self.store.set_failed(
+                            result.task_id,
+                            error_message=preverify_fail,
+                            cost_usd=result.cost_usd,
+                            duration_ms=result.duration_ms,
+                            session_id=result.session_id,
+                        )
+                        self._handle_failure(result.task_id)
+                        self._emit("task_failed", result.task_id, preverify_fail)
+                    return
+
             # Detach worktree before merge so rebase can check out the branch
             # (git refuses to check out a branch in another worktree).
             # Keep the branch — it's needed for the merge.
@@ -425,6 +459,46 @@ class OrchestratorLoop:
                 )
                 self._handle_failure(result.task_id)
                 self._emit("task_failed", result.task_id, err)
+
+    async def _run_preverify(
+        self, verification: str, task_id: str, worktree_path: Path,
+    ) -> str | None:
+        """Run verification command in the worktree before merging.
+
+        Returns None on success, or an error message string on failure.
+        Logs output to .po/logs/preverify-{task_id}.log.
+        """
+        logger.debug(
+            "Running pre-merge verification for %s: %s", task_id, verification,
+        )
+        verify_result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
+                verification,
+                shell=True,
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+            ),
+        )
+
+        log_dir = logs_dir(self.project_root)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / f"preverify-{task_id}.log"
+        with open(log_file, "w") as fh:
+            fh.write(f"Command: {verification}\n")
+            fh.write(f"Exit code: {verify_result.returncode}\n")
+            fh.write(f"--- stdout ---\n{verify_result.stdout}\n")
+            fh.write(f"--- stderr ---\n{verify_result.stderr}\n")
+
+        if verify_result.returncode == 0:
+            return None
+
+        logger.warning("Pre-merge verification failed for %s", task_id)
+        detail = verify_result.stderr or verify_result.stdout or "(no output)"
+        if len(detail) > 500:
+            detail = "..." + detail[-500:]
+        return f"Pre-merge verification failed (cmd: {verification}): {detail}"
 
     def _handle_failure(self, task_id: str) -> None:
         """Cancel dependents of a failed task."""
