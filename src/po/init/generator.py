@@ -213,7 +213,7 @@ Approved outline:
 
 {_spec_schema_instructions()}
 
-Return ONLY the JSON object, no markdown fences or explanation."""
+IMPORTANT: Return the JSON object as your text response. Do NOT use Write, Edit, or Bash tools to create any files — just output the raw JSON directly."""
 
 
 def _spec_schema_instructions() -> str:
@@ -321,7 +321,7 @@ Generate a valid PO orchestrator spec JSON file for the following project descri
 
 {_spec_schema_instructions()}
 
-Return ONLY the JSON object, no markdown fences or explanation."""
+IMPORTANT: Return the JSON object as your text response. Do NOT use Write, Edit, or Bash tools to create any files — just output the raw JSON directly."""
 
 
 def _invoke_claude(
