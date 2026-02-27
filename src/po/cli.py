@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from po.config import DEFAULT_MAX_TURNS, TERMINAL_STATUSES, logs_dir, state_db_path
+from po.config import DEFAULT_MAX_TURNS, TERMINAL_STATUSES, ensure_po_gitignore, logs_dir, state_db_path
 from po.db.connection import init_db
 from po.db.queries import SqliteTaskStore
 from po.display.status import (
@@ -254,7 +254,10 @@ def cmd_plan(args: argparse.Namespace) -> None:
     print(format_execution_plan(layers, task_dicts))
     print()
 
-    # 5. Persist to database
+    # 5. Ensure .po/ is in .gitignore before creating the directory
+    ensure_po_gitignore(project_root)
+
+    # 6. Persist to database
     db_path = state_db_path(project_root)
     conn = init_db(db_path)
     store = SqliteTaskStore(conn)
@@ -263,7 +266,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
 
     print(f"Plan saved to {db_path}")
 
-    # 6. Generate scaffolds if requested
+    # 7. Generate scaffolds if requested
     if args.scaffold:
         created = generate_scaffolds(spec, project_root)
         if created:
@@ -273,7 +276,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
         else:
             print("\nNo scaffold files needed (all output files already exist).")
 
-    # 7. Generate docs if requested
+    # 8. Generate docs if requested
     if args.generate_docs:
         created = generate_doc_tree(spec, project_root)
         print(f"\nGenerated {len(created)} documentation files:")
@@ -312,6 +315,9 @@ def cmd_run(args: argparse.Namespace) -> None:
         )
         cmd_plan(plan_args)
         print()
+
+    # Ensure .po/ is in .gitignore (safety net for older plans)
+    ensure_po_gitignore(project_root)
 
     db_path = state_db_path(project_root)
 

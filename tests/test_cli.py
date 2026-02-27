@@ -21,7 +21,7 @@ from po.cli import (
     cmd_status,
     main,
 )
-from po.config import state_db_path
+from po.config import ensure_po_gitignore, state_db_path
 from po.db.connection import init_db
 from po.db.queries import SqliteTaskStore
 from po.spec.schema import ProjectSpec
@@ -633,3 +633,32 @@ class TestLiveEventPrinter:
         assert "✗" in captured.out
         # No trailing parens for empty detail
         assert "()" not in captured.out
+
+
+class TestEnsurePoGitignore:
+    """Tests for ensure_po_gitignore."""
+
+    def test_creates_gitignore_with_po(self, tmp_path: Path) -> None:
+        ensure_po_gitignore(tmp_path)
+        content = (tmp_path / ".gitignore").read_text()
+        assert ".po/" in content
+
+    def test_appends_to_existing_gitignore(self, tmp_path: Path) -> None:
+        (tmp_path / ".gitignore").write_text("node_modules/\n")
+        ensure_po_gitignore(tmp_path)
+        content = (tmp_path / ".gitignore").read_text()
+        assert "node_modules/" in content
+        assert ".po/" in content
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        ensure_po_gitignore(tmp_path)
+        first = (tmp_path / ".gitignore").read_text()
+        ensure_po_gitignore(tmp_path)
+        second = (tmp_path / ".gitignore").read_text()
+        assert first == second
+
+    def test_noop_when_already_present(self, tmp_path: Path) -> None:
+        (tmp_path / ".gitignore").write_text("stuff\n.po/\nmore\n")
+        ensure_po_gitignore(tmp_path)
+        content = (tmp_path / ".gitignore").read_text()
+        assert content == "stuff\n.po/\nmore\n"

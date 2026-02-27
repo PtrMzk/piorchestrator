@@ -368,7 +368,6 @@ class TestEnsureGitignore:
         assert "node_modules/" in content
         assert "dist/" in content
         assert "build/" in content
-        assert ".po/" in content
 
     def test_ensure_gitignore_idempotent(self, git_repo: Path) -> None:
         """Calling _ensure_gitignore twice doesn't duplicate patterns."""

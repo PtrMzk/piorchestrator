@@ -76,7 +76,7 @@ class RebaseMerger:
         gitignore = project_root / ".gitignore"
         existing = gitignore.read_text() if gitignore.exists() else ""
 
-        patterns = ["node_modules/", "dist/", "build/", ".po/"]
+        patterns = ["node_modules/", "dist/", "build/"]
         missing = [p for p in patterns if p not in existing]
         if not missing:
             return

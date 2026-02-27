@@ -48,6 +48,22 @@ def po_dir(project_root: Path) -> Path:
     return project_root / PO_DIR
 
 
+def ensure_po_gitignore(project_root: Path) -> None:
+    """Ensure .po/ is listed in the project's .gitignore.
+
+    Idempotent: no-ops if .po/ is already present.
+    """
+    gitignore = project_root / ".gitignore"
+    existing = gitignore.read_text() if gitignore.exists() else ""
+    if ".po/" in existing:
+        return
+    lines = existing.rstrip("\n")
+    if lines:
+        lines += "\n"
+    lines += ".po/\n"
+    gitignore.write_text(lines)
+
+
 def state_db_path(project_root: Path) -> Path:
     """Return the path to the state database."""
     return po_dir(project_root) / STATE_DB
