@@ -17,6 +17,7 @@ from po.display.status import (
     format_progress_summary,
     format_status_table,
 )
+from po.display.tools import tool_summary
 
 
 def _make_task(**overrides: Any) -> dict[str, Any]:
@@ -329,7 +330,7 @@ class TestLiveDisplayReadLastAction:
             "message": {
                 "content": [
                     {"type": "text", "text": "I will write a file"},
-                    {"type": "tool_use", "name": "write_file", "input": {}},
+                    {"type": "tool_use", "name": "Write", "input": {"file_path": "/tmp/foo.ts"}},
                 ],
             },
         }
@@ -338,7 +339,7 @@ class TestLiveDisplayReadLastAction:
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
         action, ts = display._read_last_action("task-a")
-        assert "[tool] write_file" in action
+        assert "Write foo.ts" in action
 
     def test_read_last_action_text_fallback(self, tmp_path: Path) -> None:
         log_dir = tmp_path / ".po" / "logs"
@@ -402,7 +403,7 @@ class TestLiveDisplayReadLastAction:
             "timestamp": recent.isoformat(),
             "message": {
                 "content": [
-                    {"type": "tool_use", "name": "bash", "input": {}},
+                    {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}},
                 ],
             },
         }
@@ -411,7 +412,7 @@ class TestLiveDisplayReadLastAction:
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
         action, ts = display._read_last_action("task-a")
-        assert action == "[tool] bash"
+        assert "Bash" in action
         assert "s ago" in ts
 
 
@@ -458,3 +459,65 @@ class TestLiveDisplayStatusStyles:
         assert _STATUS_STYLES["failed"][0] == "✗"
         assert _STATUS_STYLES["cancelled"][0] == "⊘"
         assert _STATUS_STYLES["decomposed"][0] == "◈"
+
+
+# ──────────────── tool_summary tests ────────────────
+
+
+class TestToolSummary:
+    def test_read_with_path(self) -> None:
+        block = {"name": "Read", "input": {"file_path": "/src/po/cli.py"}}
+        assert tool_summary(block) == "Read cli.py"
+
+    def test_read_without_path(self) -> None:
+        block = {"name": "Read", "input": {}}
+        assert tool_summary(block) == "Read"
+
+    def test_glob_with_pattern(self) -> None:
+        block = {"name": "Glob", "input": {"pattern": "**/*.ts"}}
+        assert tool_summary(block) == "Glob **/*.ts"
+
+    def test_grep_with_pattern(self) -> None:
+        block = {"name": "Grep", "input": {"pattern": "tool_use"}}
+        assert tool_summary(block) == "Grep 'tool_use'"
+
+    def test_bash_with_description(self) -> None:
+        block = {"name": "Bash", "input": {"description": "Run tests", "command": "pytest"}}
+        assert tool_summary(block) == "Bash: Run tests"
+
+    def test_bash_with_command_only(self) -> None:
+        block = {"name": "Bash", "input": {"command": "npm install"}}
+        assert tool_summary(block) == "Bash: npm install"
+
+    def test_bash_empty(self) -> None:
+        block = {"name": "Bash", "input": {}}
+        assert tool_summary(block) == "Bash"
+
+    def test_edit_with_path(self) -> None:
+        block = {"name": "Edit", "input": {"file_path": "/src/po/display/live.py"}}
+        assert tool_summary(block) == "Edit live.py"
+
+    def test_write_with_path(self) -> None:
+        block = {"name": "Write", "input": {"file_path": "/tmp/foo.ts"}}
+        assert tool_summary(block) == "Write foo.ts"
+
+    def test_write_file_variant(self) -> None:
+        block = {"name": "write_file", "input": {"file_path": "/tmp/bar.py"}}
+        assert tool_summary(block) == "Write bar.py"
+
+    def test_task_with_description(self) -> None:
+        block = {"name": "Task", "input": {"description": "Explore codebase"}}
+        assert tool_summary(block) == "Task: Explore codebase"
+
+    def test_unknown_tool_returns_name(self) -> None:
+        block = {"name": "SomeCustomTool", "input": {}}
+        assert tool_summary(block) == "SomeCustomTool"
+
+    def test_missing_name_returns_question_mark(self) -> None:
+        block = {"input": {}}
+        assert tool_summary(block) == "?"
+
+    def test_long_bash_command_truncated(self) -> None:
+        block = {"name": "Bash", "input": {"command": "x" * 100}}
+        result = tool_summary(block)
+        assert len(result) <= 66  # "Bash: " (6) + 60 chars

@@ -13,6 +13,7 @@ from rich.tree import Tree
 
 from po.config import logs_dir
 from po.db.queries import SqliteTaskStore
+from po.display.tools import tool_summary
 
 # Status → (symbol, style)
 _STATUS_STYLES: dict[str, tuple[str, str]] = {
@@ -247,7 +248,7 @@ class LiveDisplay:
                 # Look for tool_use blocks first (reverse order)
                 for block in reversed(content):
                     if isinstance(block, dict) and block.get("type") == "tool_use":
-                        return f"[tool] {block.get('name', '?')}", ts
+                        return tool_summary(block), ts
                 # Fallback to last text block
                 for block in reversed(content):
                     if isinstance(block, dict) and block.get("type") == "text":

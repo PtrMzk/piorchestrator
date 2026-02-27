@@ -12,10 +12,10 @@ Piorchestrator (`po`) is a **multi-agent orchestrator** that coordinates paralle
 Converts a plain-English project description into a structured JSON spec, then automatically validates, plans, scaffolds, and generates docs (i.e. runs `po plan` logic). In interactive terminals, uses a two-phase flow: first generates a human-readable outline for user review, then produces the full JSON spec after approval. Users can provide feedback to revise the outline before committing.
 
 **Code walkthrough (interactive mode):**
-1. `cli.py:cmd_init` → calls `init/generator.py:generate_outline(description, model, feedback=None)`
+1. `cli.py:cmd_init` → calls `init/generator.py:generate_outline(description, model, feedback=None, session_id=None)`
 2. `generate_outline` builds a prompt via `_build_outline_prompt()` asking for a markdown outline (task names, descriptions, dependencies, layers) — NOT JSON
-3. `_invoke_claude()` spawns Claude CLI, returns the outline text
-4. User reviews outline, types `y` to approve or provides feedback to revise
+3. `_invoke_claude()` spawns Claude CLI with a `rich.status.Status` spinner (updates in-place with tool summaries from `display/tools.py:tool_summary()`), returns `(result_text, session_id)`
+4. User reviews outline, types `y` to approve or provides feedback to revise — feedback revisions resume the same Claude session via `--resume <session_id>` to avoid re-reading the codebase
 5. On approval: `generate_spec_from_outline(description, outline, output, model)` builds a prompt combining the approved outline with `_spec_schema_instructions()` (JSON schema, constraints, example spec)
 6. `_invoke_claude()` generates JSON, `_extract_json()` strips fences, `ProjectSpec.from_dict()` validates
 7. Auto-runs `cmd_plan` logic: validation, execution plan display, DB persistence, scaffold generation, doc tree creation
@@ -129,7 +129,7 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | **Agent** | `agent/launcher.py`, `agent/prompt_builder.py` | Claude CLI subprocess management, prompt construction, cost/session parsing |
 | **Merge** | `orchestrator/merge.py` | Rebase + fast-forward merge; spawns a "merge agent" Claude to resolve conflicts |
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
-| **Display** | `display/live.py`, `display/status.py` | Rich terminal UI with 4Hz refresh, dependency-layered tree, live action tailing |
+| **Display** | `display/live.py`, `display/status.py`, `display/tools.py` | Rich terminal UI with 4Hz refresh, dependency-layered tree, live action tailing, tool summaries |
 
 ---
 
@@ -152,6 +152,7 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | `graph/resolver.py` | Dependency resolution and planning |
 | `display/status.py` | Text-based status output |
 | `display/live.py` | Rich terminal UI |
+| `display/tools.py` | Human-readable tool_use block summaries |
 | `init/generator.py` | Spec generation from English |
 | `scaffold/generator.py` | Stub file generation |
 | `docs/generator.py` | Documentation tree generation |

@@ -143,7 +143,7 @@ class TestGenerateSpec:
         output = tmp_path / "spec.json"
         raw_response = json.dumps(self.VALID_SPEC)
 
-        with patch("po.init.generator._invoke_claude", return_value=raw_response):
+        with patch("po.init.generator._invoke_claude", return_value=(raw_response, None)):
             result = generate_spec("a calculator", output)
 
         assert result == output
@@ -166,7 +166,7 @@ class TestGenerateSpec:
         raw_response = json.dumps(bad_spec)
 
         with (
-            patch("po.init.generator._invoke_claude", return_value=raw_response),
+            patch("po.init.generator._invoke_claude", return_value=(raw_response, None)),
             pytest.raises(ValueError, match="failed validation"),
         ):
             generate_spec("test", output)
@@ -187,7 +187,7 @@ class TestGenerateSpec:
         output = tmp_path / "sub" / "dir" / "spec.json"
         raw_response = json.dumps(self.VALID_SPEC)
 
-        with patch("po.init.generator._invoke_claude", return_value=raw_response):
+        with patch("po.init.generator._invoke_claude", return_value=(raw_response, None)):
             result = generate_spec("a calculator", output)
 
         assert result == output
@@ -197,7 +197,7 @@ class TestGenerateSpec:
         output = tmp_path / "spec.json"
 
         with (
-            patch("po.init.generator._invoke_claude", return_value="I cannot help"),
+            patch("po.init.generator._invoke_claude", return_value=("I cannot help", None)),
             pytest.raises(ValueError, match="Could not extract valid JSON"),
         ):
             generate_spec("test", output)
@@ -206,7 +206,7 @@ class TestGenerateSpec:
         output = tmp_path / "spec.json"
         raw_response = json.dumps(self.VALID_SPEC)
 
-        with patch("po.init.generator._invoke_claude", return_value=raw_response) as mock:
+        with patch("po.init.generator._invoke_claude", return_value=(raw_response, None)) as mock:
             generate_spec("a calculator", output, model="opus")
 
         mock.assert_called_once()
@@ -247,22 +247,29 @@ class TestBuildOutlinePrompt:
 class TestGenerateOutline:
     """Tests for generate_outline."""
 
-    def test_returns_claude_response(self):
+    def test_returns_claude_response_and_session_id(self):
         outline_text = "## Project: my-app\n- init-project\n- add-feature"
-        with patch("po.init.generator._invoke_claude", return_value=outline_text):
-            result = generate_outline("build an app")
-        assert result == outline_text
+        with patch("po.init.generator._invoke_claude", return_value=(outline_text, "sess-123")):
+            outline, sid = generate_outline("build an app")
+        assert outline == outline_text
+        assert sid == "sess-123"
 
     def test_passes_model(self):
-        with patch("po.init.generator._invoke_claude", return_value="outline") as mock:
+        with patch("po.init.generator._invoke_claude", return_value=("outline", None)) as mock:
             generate_outline("test", model="sonnet")
         assert mock.call_args[0][1] == "sonnet"
 
     def test_passes_feedback(self):
-        with patch("po.init.generator._invoke_claude", return_value="outline") as mock:
+        with patch("po.init.generator._invoke_claude", return_value=("outline", None)) as mock:
             generate_outline("test", feedback="add more tasks")
         prompt = mock.call_args[0][0]
         assert "add more tasks" in prompt
+
+    def test_passes_session_id(self):
+        rv = ("outline", "sess-456")
+        with patch("po.init.generator._invoke_claude", return_value=rv) as mock:
+            generate_outline("test", session_id="sess-123")
+        assert mock.call_args[1]["session_id"] == "sess-123"
 
     def test_claude_failure_propagates(self):
         with (
@@ -288,7 +295,7 @@ class TestGenerateSpecFromOutline:
         outline = "## Project: calc\n- init\n- add-ops"
         raw_response = json.dumps(self.VALID_SPEC)
 
-        with patch("po.init.generator._invoke_claude", return_value=raw_response):
+        with patch("po.init.generator._invoke_claude", return_value=(raw_response, None)):
             result = generate_spec_from_outline("a calculator", outline, output)
 
         assert result == output
@@ -301,7 +308,7 @@ class TestGenerateSpecFromOutline:
         outline = "## Project: calc\n- init\n- add-ops"
         raw_response = json.dumps(self.VALID_SPEC)
 
-        with patch("po.init.generator._invoke_claude", return_value=raw_response) as mock:
+        with patch("po.init.generator._invoke_claude", return_value=(raw_response, None)) as mock:
             generate_spec_from_outline("a calculator", outline, output)
 
         prompt = mock.call_args[0][0]
@@ -320,7 +327,7 @@ class TestGenerateSpecFromOutline:
         raw_response = json.dumps(bad_spec)
 
         with (
-            patch("po.init.generator._invoke_claude", return_value=raw_response),
+            patch("po.init.generator._invoke_claude", return_value=(raw_response, None)),
             pytest.raises(ValueError, match="failed validation"),
         ):
             generate_spec_from_outline("test", "outline", output)

@@ -204,3 +204,14 @@ mode falls back to direct spec generation. `po plan` now defaults `--scaffold` a
 generator. 12 new tests for outline generation and spec-from-outline flow.
 
 **Files:** `src/po/cli.py`, `src/po/init/generator.py`, `tests/test_init.py`
+
+### ~~37. Improve `po init` streaming display and session reuse~~ — DONE
+`_invoke_claude()` now uses a `rich.status.Status` spinner that updates in-place with
+human-readable tool summaries (via new `display/tools.py:tool_summary()` helper) instead
+of printing a new line per tool call. Session reuse: `_invoke_claude()` captures and returns
+`session_id` from the result message; `generate_outline()` accepts/returns `session_id`;
+CLI feedback loop passes `session_id` back so revisions resume the same Claude session via
+`--resume`. `LiveDisplay._read_last_action()` also uses `tool_summary()` for richer labels.
+14 new tests for `tool_summary`, updated existing tests for new tuple return signatures.
+
+**Files:** `src/po/display/tools.py` (new), `src/po/init/generator.py`, `src/po/cli.py`, `src/po/display/live.py`, `tests/test_display.py`, `tests/test_init.py`

@@ -10,8 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rich.console import Console
+from rich.status import Status
 
 from po.config import logs_dir
+from po.display.tools import tool_summary
 from po.spec.schema import ProjectSpec
 
 logger = logging.getLogger(__name__)
@@ -180,7 +182,8 @@ def generate_outline(
     model: str = "opus",
     project_root: Path | None = None,
     feedback: str | None = None,
-) -> str:
+    session_id: str | None = None,
+) -> tuple[str, str | None]:
     """Generate a high-level spec outline from a description.
 
     Args:
@@ -188,12 +191,13 @@ def generate_outline(
         model: Claude model to use.
         project_root: Project root for log output.
         feedback: Optional user feedback on a previous outline.
+        session_id: Optional session ID to resume (avoids re-reading codebase).
 
     Returns:
-        Markdown outline string.
+        Tuple of (markdown outline string, session_id or None).
     """
     prompt = _build_outline_prompt(description, feedback)
-    return _invoke_claude(prompt, model, project_root=project_root)
+    return _invoke_claude(prompt, model, project_root=project_root, session_id=session_id)
 
 
 def _build_spec_from_outline_prompt(description: str, outline: str) -> str:
@@ -294,7 +298,7 @@ def generate_spec_from_outline(
     root = project_root or output.parent.resolve()
 
     prompt = _build_spec_from_outline_prompt(description, outline)
-    raw = _invoke_claude(prompt, model, project_root=root)
+    raw, _ = _invoke_claude(prompt, model, project_root=root)
     data = _extract_json(raw)
 
     # Validate through ProjectSpec
@@ -320,8 +324,17 @@ Generate a valid PO orchestrator spec JSON file for the following project descri
 Return ONLY the JSON object, no markdown fences or explanation."""
 
 
-def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) -> str:
-    """Call the Claude CLI synchronously, stream logs to disk, and return the result."""
+def _invoke_claude(
+    prompt: str,
+    model: str,
+    project_root: Path | None = None,
+    session_id: str | None = None,
+) -> tuple[str, str | None]:
+    """Call the Claude CLI synchronously, stream logs to disk, and return the result.
+
+    Returns:
+        Tuple of (result_text, session_id or None).
+    """
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
     cmd = [
         "claude",
@@ -330,6 +343,8 @@ def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) ->
         "--output-format", "stream-json",
         "--model", model,
     ]
+    if session_id:
+        cmd.extend(["--resume", session_id])
 
     log_file = None
     if project_root is not None:
@@ -345,8 +360,11 @@ def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) ->
     )
 
     result_text: str | None = None
+    result_session_id: str | None = None
     assert proc.stdout is not None
-    stderr = Console(stderr=True)
+    stderr_console = Console(stderr=True)
+    status = Status("Thinking…", console=stderr_console)
+    status.start()
 
     fh = open(log_file, "wb") if log_file else None
     try:
@@ -373,19 +391,21 @@ def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) ->
                 if isinstance(content, list):
                     for block in content:
                         if block.get("type") == "tool_use":
-                            stderr.print(f"  [dim cyan][tool][/] [dim]{block.get('name', '?')}[/]")
+                            status.update(tool_summary(block))
                         elif block.get("type") == "text":
                             text = block.get("text", "").strip()
                             if text:
-                                line = text.split("\n")[0][:100]
-                                stderr.print(f"  [dim]> {line}[/]")
+                                first_line = text.split("\n")[0][:80]
+                                status.update(f"> {first_line}")
                 elif isinstance(content, str) and content.strip():
-                    line = content.strip().split("\n")[0][:100]
-                    stderr.print(f"  [dim]> {line}[/]")
+                    first_line = content.strip().split("\n")[0][:80]
+                    status.update(f"> {first_line}")
 
             if msg.get("type") == "result":
                 result_text = msg.get("result", "")
+                result_session_id = msg.get("session_id")
     finally:
+        status.stop()
         if fh:
             fh.close()
 
@@ -393,8 +413,8 @@ def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) ->
 
     if proc.returncode != 0:
         assert proc.stderr is not None
-        stderr = proc.stderr.read().decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"Claude CLI failed (exit {proc.returncode}): {stderr}")
+        err = proc.stderr.read().decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Claude CLI failed (exit {proc.returncode}): {err}")
 
     if result_text is None:
         raise RuntimeError("Claude CLI returned no result")
@@ -402,7 +422,7 @@ def _invoke_claude(prompt: str, model: str, project_root: Path | None = None) ->
     if log_file:
         logger.info("Logs written to %s", log_file)
 
-    return result_text
+    return result_text, result_session_id
 
 
 def _extract_json(raw: str) -> dict:
@@ -473,7 +493,7 @@ def generate_spec(
     root = project_root or output.parent.resolve()
 
     prompt = _build_init_prompt(description)
-    raw = _invoke_claude(prompt, model, project_root=root)
+    raw, _ = _invoke_claude(prompt, model, project_root=root)
     data = _extract_json(raw)
 
     # Validate through ProjectSpec

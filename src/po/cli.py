@@ -646,6 +646,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     else:
         # Interactive: outline → review → full spec
         feedback: str | None = None
+        session_id: str | None = None
         while True:
             if feedback:
                 print(f"\nRevising outline with feedback (model={model})...")
@@ -653,8 +654,9 @@ def cmd_init(args: argparse.Namespace) -> None:
                 print(f"Generating outline (model={model})...")
 
             try:
-                outline = generate_outline(
-                    description, model, project_root=project_root, feedback=feedback,
+                outline, session_id = generate_outline(
+                    description, model, project_root=project_root,
+                    feedback=feedback, session_id=session_id,
                 )
             except RuntimeError as e:
                 logger.error("%s", e)
