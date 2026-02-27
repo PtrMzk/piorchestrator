@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from po.config import DEFAULT_MAX_CONCURRENCY
+
 
 @dataclass
 class TaskSpec:
@@ -59,7 +61,7 @@ class ProjectSpec:
     tasks: list[TaskSpec]
     description: str = ""
     default_model: str = "opus"
-    max_concurrency: int = 3
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY
     global_context: str = ""
     global_context_files: list[str] = field(default_factory=list)
     user_stories: list[str] = field(default_factory=list)
@@ -113,7 +115,7 @@ class ProjectSpec:
             tasks=tasks,
             description=data.get("description", ""),
             default_model=default_model,
-            max_concurrency=data.get("max_concurrency", 3),
+            max_concurrency=data.get("max_concurrency", DEFAULT_MAX_CONCURRENCY),
             global_context=data.get("global_context", ""),
             global_context_files=data.get("global_context_files", []),
             user_stories=data.get("user_stories", []),

@@ -11,7 +11,7 @@ WORKTREES_DIR = "worktrees"
 LOGS_DIR = "logs"
 
 # Default concurrency
-DEFAULT_MAX_CONCURRENCY = 3
+DEFAULT_MAX_CONCURRENCY = 5
 
 # Default model for spec-level tasks; subtasks default to sonnet
 DEFAULT_MODEL = "opus"

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS project (
     project_name TEXT NOT NULL,
     description TEXT DEFAULT '',
     default_model TEXT DEFAULT 'opus',
-    max_concurrency INTEGER DEFAULT 3,
+    max_concurrency INTEGER DEFAULT 5,
     global_context TEXT DEFAULT '',
     global_context_files TEXT DEFAULT '[]',
     created_at TEXT DEFAULT (datetime('now'))

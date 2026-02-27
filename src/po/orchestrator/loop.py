@@ -13,6 +13,7 @@ from pathlib import Path
 from po.agent.launcher import AgentRunner, ClaudeCodeRunner
 from po.agent.prompt_builder import build_prompt
 from po.config import (
+    DEFAULT_MAX_CONCURRENCY,
     DEFAULT_MAX_TURNS,
     STATUS_DECOMPOSED,
     STATUS_PENDING,
@@ -35,7 +36,7 @@ class OrchestratorLoop:
         self,
         store: SqliteTaskStore,
         project_root: Path,
-        max_concurrency: int = 3,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         worktree_manager: WorktreeProvider | None = None,
         agent_runner: AgentRunner | None = None,
         merger: MergeStrategy | None = None,

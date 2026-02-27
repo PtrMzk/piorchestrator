@@ -21,7 +21,7 @@ _EXAMPLE_SPEC = """\
   "project_name": "todo-api",
   "description": "REST API for a todo list",
   "default_model": "opus",
-  "max_concurrency": 3,
+  "max_concurrency": 5,
   "global_context": "TypeScript on Bun. Prefer built-in Bun APIs. Only well-known deps.",
   "global_context_files": ["README.md"],
   "tasks": [
@@ -219,7 +219,7 @@ The spec must be a JSON object with these fields:
 - "project_name" (string, required): short kebab-case identifier
 - "description" (string): one-line summary
 - "default_model" (string): model for tasks, use "opus"
-- "max_concurrency" (integer): how many tasks can run in parallel, typically 3
+- "max_concurrency" (integer): how many tasks can run in parallel, typically 5
 - "global_context" (string): shared instructions for all tasks
 - "global_context_files" (list of strings): files all tasks should read
 - "user_stories" (list of strings): plain-English user stories
