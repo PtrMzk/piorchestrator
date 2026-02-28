@@ -258,6 +258,35 @@ class TestDockerSandbox:
         hostname_idx = new_cmd.index("--hostname")
         assert new_cmd[hostname_idx + 1] == "po-agent"
 
+    def test_wrap_command_mounts_claude_config(self, tmp_path: Path) -> None:
+        sandbox = DockerSandbox()
+        sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
+
+        # Create a fake .claude dir to simulate host config
+        fake_claude_dir = tmp_path / "fakehome" / ".claude"
+        fake_claude_dir.mkdir(parents=True)
+
+        with patch("po.sandbox.docker.os.environ", {"CLAUDE_CONFIG_DIR": str(fake_claude_dir)}):
+            new_cmd, _ = sandbox.wrap_command(
+                ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
+            )
+
+        vol_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-v"]
+        assert f"{fake_claude_dir}:/home/agent/.claude:ro" in vol_args
+
+    def test_wrap_command_skips_claude_config_when_missing(self, tmp_path: Path) -> None:
+        sandbox = DockerSandbox()
+        sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
+
+        with patch("po.sandbox.docker.os.environ", {"CLAUDE_CONFIG_DIR": "/nonexistent/.claude"}):
+            new_cmd, _ = sandbox.wrap_command(
+                ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
+            )
+
+        vol_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-v"]
+        # Only project root mount, no claude config mount
+        assert len(vol_args) == 1
+
     def test_wrap_command_includes_registry_hosts(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()
         sandbox._host_ips = {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.resources
 import logging
+import os
 import shutil
 import socket
 import subprocess
@@ -121,6 +122,11 @@ class DockerSandbox:
         env: dict[str, str],
     ) -> tuple[list[str], dict[str, str]]:
         """Wrap a command to run inside the sandbox container."""
+        # Locate host's Claude config dir for auth credentials
+        host_claude_dir = Path(
+            os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")
+        )
+
         docker_cmd = [
             "docker", "run", "--rm", "-i",
             # Mount project at the same absolute path
@@ -134,6 +140,13 @@ class DockerSandbox:
             "-e", f"ANTHROPIC_API_KEY={env.get('ANTHROPIC_API_KEY', '')}",
             "-e", "HOME=/home/agent",
         ]
+
+        # Mount host's Claude config for auth credentials (OAuth tokens).
+        # This bind mount overlays the tmpfs at /home/agent/.claude/.
+        if host_claude_dir.is_dir():
+            docker_cmd.extend([
+                "-v", f"{host_claude_dir}:/home/agent/.claude:ro",
+            ])
 
         # Inject all resolved host IPs via --add-host
         for hostname, ips in self._host_ips.items():
