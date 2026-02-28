@@ -19,9 +19,9 @@ if [ -n "$API_IPS" ]; then
         iptables -A OUTPUT -d "$ip" -p tcp --dport 443 -j ACCEPT
     done
 
-    # Drop everything else
-    iptables -A OUTPUT -j DROP
-    iptables -A INPUT -j DROP
+    # Reject everything else (REJECT fails fast; DROP causes hangs)
+    iptables -A OUTPUT -j REJECT --reject-with icmp-net-unreachable
+    iptables -A INPUT -j REJECT --reject-with icmp-port-unreachable
 fi
 
 # --- Git configuration ---

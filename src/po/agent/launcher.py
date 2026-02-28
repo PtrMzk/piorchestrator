@@ -92,6 +92,7 @@ class ClaudeCodeRunner:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 cwd=str(worktree_path),
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
