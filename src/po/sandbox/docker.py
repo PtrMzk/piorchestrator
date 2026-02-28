@@ -141,11 +141,11 @@ class DockerSandbox:
             "-e", "HOME=/home/agent",
         ]
 
-        # Mount host's Claude config for auth credentials (OAuth tokens).
-        # This bind mount overlays the tmpfs at /home/agent/.claude/.
+        # Mount host's Claude config to a staging path (read-only).
+        # The entrypoint copies auth credentials to the writable home dir.
         if host_claude_dir.is_dir():
             docker_cmd.extend([
-                "-v", f"{host_claude_dir}:/home/agent/.claude:ro",
+                "-v", f"{host_claude_dir}:/home/agent/.claude-host:ro",
             ])
 
         # Inject all resolved host IPs via --add-host

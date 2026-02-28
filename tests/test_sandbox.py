@@ -272,7 +272,7 @@ class TestDockerSandbox:
             )
 
         vol_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-v"]
-        assert f"{fake_claude_dir}:/home/agent/.claude:ro" in vol_args
+        assert f"{fake_claude_dir}:/home/agent/.claude-host:ro" in vol_args
 
     def test_wrap_command_skips_claude_config_when_missing(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()
