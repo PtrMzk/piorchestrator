@@ -10,6 +10,8 @@ import pytest
 from po.init.generator import (
     _build_init_prompt,
     _build_outline_prompt,
+    _build_spec_from_outline_prompt,
+    _detect_codebase_docs,
     _extract_json,
     generate_outline,
     generate_spec,
@@ -331,3 +333,83 @@ class TestGenerateSpecFromOutline:
             pytest.raises(ValueError, match="failed validation"),
         ):
             generate_spec_from_outline("test", "outline", output)
+
+
+# --- _detect_codebase_docs tests ---
+
+
+class TestDetectCodebaseDocs:
+    """Tests for _detect_codebase_docs."""
+
+    def test_returns_none_when_no_project_root(self):
+        assert _detect_codebase_docs(None) is None
+
+    def test_returns_none_when_dir_missing(self, tmp_path):
+        assert _detect_codebase_docs(tmp_path) is None
+
+    def test_returns_none_when_dir_empty(self, tmp_path):
+        (tmp_path / "docs" / "codebase").mkdir(parents=True)
+        assert _detect_codebase_docs(tmp_path) is None
+
+    def test_returns_listing_with_files(self, tmp_path):
+        docs_dir = tmp_path / "docs" / "codebase"
+        docs_dir.mkdir(parents=True)
+        (docs_dir / "index.md").write_text("# Index\n")
+        (docs_dir / "api.md").write_text("# API\n")
+
+        listing = _detect_codebase_docs(tmp_path)
+        assert listing is not None
+        assert "docs/codebase/index.md" in listing
+        assert "docs/codebase/api.md" in listing
+
+    def test_includes_nested_files(self, tmp_path):
+        docs_dir = tmp_path / "docs" / "codebase" / "sub"
+        docs_dir.mkdir(parents=True)
+        (docs_dir / "deep.md").write_text("# Deep\n")
+
+        listing = _detect_codebase_docs(tmp_path)
+        assert listing is not None
+        assert "docs/codebase/sub/deep.md" in listing
+
+
+# --- Codebase docs integration into prompts ---
+
+
+class TestCodebaseDocsInPrompts:
+    """Tests for codebase docs integration in prompt builders."""
+
+    def test_outline_prompt_includes_docs_when_present(self, tmp_path):
+        docs_dir = tmp_path / "docs" / "codebase"
+        docs_dir.mkdir(parents=True)
+        (docs_dir / "index.md").write_text("# Index\n")
+
+        prompt = _build_outline_prompt("test project", project_root=tmp_path)
+        assert "docs/codebase/index.md" in prompt
+        assert "global_context_files" in prompt
+
+    def test_outline_prompt_no_docs_without_dir(self, tmp_path):
+        prompt = _build_outline_prompt("test project", project_root=tmp_path)
+        assert "Pre-scanned codebase" not in prompt
+
+    def test_spec_from_outline_prompt_includes_docs(self, tmp_path):
+        docs_dir = tmp_path / "docs" / "codebase"
+        docs_dir.mkdir(parents=True)
+        (docs_dir / "index.md").write_text("# Index\n")
+
+        prompt = _build_spec_from_outline_prompt(
+            "test project", "## outline", project_root=tmp_path,
+        )
+        assert "docs/codebase/index.md" in prompt
+        assert "global_context_files" in prompt
+
+    def test_init_prompt_includes_docs(self, tmp_path):
+        docs_dir = tmp_path / "docs" / "codebase"
+        docs_dir.mkdir(parents=True)
+        (docs_dir / "index.md").write_text("# Index\n")
+
+        prompt = _build_init_prompt("test project", project_root=tmp_path)
+        assert "docs/codebase/index.md" in prompt
+
+    def test_init_prompt_no_docs_without_project_root(self):
+        prompt = _build_init_prompt("test project")
+        assert "Pre-scanned codebase" not in prompt

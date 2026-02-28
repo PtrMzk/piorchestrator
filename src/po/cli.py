@@ -174,6 +174,23 @@ def main() -> None:
         help="Project root directory",
     )
 
+    # po scan
+    scan_parser = subparsers.add_parser(
+        "scan", help="Scan codebase and generate documentation",
+    )
+    scan_parser.add_argument(
+        "--model", type=str, default="opus",
+        help="Claude model to use (default: opus)",
+    )
+    scan_parser.add_argument(
+        "--output-dir", type=str, default="docs/codebase",
+        help="Output directory for generated docs (default: docs/codebase)",
+    )
+    scan_parser.add_argument(
+        "--project-root", type=Path, default=Path("."),
+        help="Project root directory",
+    )
+
     # po init
     init_parser = subparsers.add_parser(
         "init", help="Generate a spec file from a plain English description",
@@ -215,6 +232,8 @@ def main() -> None:
         cmd_logs(args)
     elif args.command == "clean":
         cmd_clean(args)
+    elif args.command == "scan":
+        cmd_scan(args)
     elif args.command == "init":
         cmd_init(args)
 
@@ -627,6 +646,39 @@ def cmd_clean(args: argparse.Namespace) -> None:
             removed += 1
 
     print(f"Cleaned {removed} worktree(s).")
+
+
+def cmd_scan(args: argparse.Namespace) -> None:
+    """Scan codebase and generate documentation."""
+    from po.scan.scanner import scan_codebase
+
+    project_root: Path = args.project_root.resolve()
+    model: str = args.model
+    output_dir: str = args.output_dir
+
+    print(f"Scanning codebase (model={model}, output={output_dir})...")
+    try:
+        docs_path = scan_codebase(
+            model=model,
+            output_dir=output_dir,
+            project_root=project_root,
+        )
+    except RuntimeError as e:
+        logger.error("%s", e)
+        sys.exit(1)
+
+    # List generated files
+    files = sorted(docs_path.rglob("*"))
+    doc_files = [f for f in files if f.is_file()]
+    if doc_files:
+        print(f"\nGenerated {len(doc_files)} documentation files:")
+        for f in doc_files:
+            print(f"  {f.relative_to(project_root)}")
+    else:
+        print("\nNo documentation files were generated.")
+
+    print(f"\nDocs directory: {docs_path.relative_to(project_root)}")
+    print("Tip: run 'po init' to generate a spec that references these docs.")
 
 
 def cmd_init(args: argparse.Namespace) -> None:

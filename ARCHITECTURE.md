@@ -109,7 +109,16 @@ Resets `failed`/`cancelled` tasks back to `pending`, cascading to dependents. Pr
 3. BFS cascade: walks all tasks, finds cancelled dependents of the reset task, resets them too
 4. Git branches are *not* deleted — the next `po run` reuses the existing `po/{task_id}` branch via `git worktree add <path> <existing-branch>`
 
-### 6. `po clean` — Cleanup
+### 6. `po scan` — Codebase Documentation Scan
+Pre-generates documentation for an existing codebase using Claude. Creates nested markdown docs under `docs/codebase/` (configurable with `--output-dir`), including an `index.md` overview and per-component documentation files. The scan runs Claude with `--permission-mode bypassPermissions` so it can read the entire codebase. When `po init` or `po plan` is subsequently run, the init/outline/spec prompts automatically detect these docs and instruct Claude to wire them into `global_context_files` and per-task `context_files`, so subagents can read pre-built docs instead of re-exploring the codebase.
+
+**Code walkthrough:**
+1. `cli.py:cmd_scan` → `scan/scanner.py:scan_codebase(model, output_dir, project_root)`
+2. `_build_scan_prompt(output_dir)` — instructs Claude to create `index.md` + per-component docs
+3. `_invoke_scan_agent()` — spawns Claude CLI, streams output with Rich spinner, logs to `.po/logs/scan.jsonl`
+4. Validates that the output directory was created, lists generated files
+
+### 7. `po clean` — Cleanup
 Removes orphaned git worktrees that weren't properly cleaned up.
 
 **Code walkthrough:**
@@ -130,6 +139,7 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | **Agent** | `agent/launcher.py`, `agent/prompt_builder.py` | Claude CLI subprocess management, prompt construction, cost/session parsing |
 | **Merge** | `orchestrator/merge.py` | Rebase + fast-forward merge; spawns a "merge agent" Claude to resolve conflicts |
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
+| **Scan** | `scan/scanner.py` | Codebase documentation generation via Claude CLI |
 | **Display** | `display/live.py`, `display/status.py`, `display/tools.py` | Rich terminal UI with 4Hz refresh, dependency-layered tree, live action tailing, tool summaries |
 
 ---
@@ -154,9 +164,10 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | `display/status.py` | Text-based status output |
 | `display/live.py` | Rich terminal UI |
 | `display/tools.py` | Human-readable tool_use block summaries |
-| `init/generator.py` | Spec generation from English |
+| `init/generator.py` | Spec generation from English (auto-detects codebase docs) |
 | `scaffold/generator.py` | Stub file generation |
 | `docs/generator.py` | Documentation tree generation |
+| `scan/scanner.py` | Codebase documentation scanner |
 | `playground/generator.py` | Self-testing playground spec |
 
 ---

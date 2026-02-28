@@ -224,3 +224,14 @@ orchestrator escalates the model up the ladder (haiku → sonnet → opus). Emit
 event printer. 13 new tests covering the ladder function and integration scenarios.
 
 **Files:** `src/po/config.py`, `src/po/orchestrator/loop.py`, `src/po/cli.py`, `tests/test_escalation.py` (new)
+
+### ~~39. Codebase documentation scan~~ — DONE
+Added `po scan` command that invokes Claude to analyze an existing codebase and generate
+nested documentation under `docs/codebase/` (configurable via `--output-dir`). Created
+`src/po/scan/` module with `scan_codebase()`, `_build_scan_prompt()`, and
+`_invoke_scan_agent()`. Integrated codebase docs into spec generation: `_detect_codebase_docs()`
+checks for pre-scanned docs and appends instructions to outline, spec-from-outline, and
+init prompts telling Claude to wire docs into `global_context_files` and per-task
+`context_files`. 16 new tests covering prompt building and codebase doc detection/integration.
+
+**Files:** `src/po/scan/__init__.py` (new), `src/po/scan/scanner.py` (new), `src/po/cli.py`, `src/po/init/generator.py`, `tests/test_scan.py` (new), `tests/test_init.py`
