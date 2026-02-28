@@ -278,7 +278,13 @@ class TestDockerSandbox:
         sandbox = DockerSandbox()
         sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
 
-        with patch("po.sandbox.docker.os.environ", {"CLAUDE_CONFIG_DIR": "/nonexistent/.claude"}):
+        fake_home = tmp_path / "emptyhome"
+        fake_home.mkdir()
+
+        with (
+            patch("po.sandbox.docker.os.environ", {"CLAUDE_CONFIG_DIR": "/nonexistent/.claude"}),
+            patch("po.sandbox.docker.Path.home", return_value=fake_home),
+        ):
             new_cmd, _ = sandbox.wrap_command(
                 ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
             )

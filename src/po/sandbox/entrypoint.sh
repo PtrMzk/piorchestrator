@@ -29,20 +29,25 @@ git config --global --add safe.directory '*'
 git config --global user.name "po-agent"
 git config --global user.email "po-agent@localhost"
 
-# --- Claude onboarding bypass + auth credentials ---
+# --- Claude auth + config ---
 # Must run here (not Dockerfile) because --tmpfs /home/agent wipes the home dir
 mkdir -p /home/agent/.claude
-echo '{"hasCompletedOnboarding":true}' > /home/agent/.claude.json
 
-# Copy auth credentials from host config (mounted read-only at staging path)
+# Copy host's .claude.json (contains oauthAccount for auth)
+if [ -f /home/agent/.claude.json-host ]; then
+    cp /home/agent/.claude.json-host /home/agent/.claude.json
+else
+    echo '{"hasCompletedOnboarding":true}' > /home/agent/.claude.json
+fi
+
+# Copy host's .claude/ dir (contains settings.json etc.)
 if [ -d /home/agent/.claude-host ]; then
-    cp -a /home/agent/.claude-host/. /home/agent/.claude/
+    cp -r /home/agent/.claude-host/. /home/agent/.claude/
 fi
 
 chown -R agent:agent /home/agent/.claude /home/agent/.claude.json
 
 # --- Environment ---
-export CLAUDE_CONFIG_DIR="/home/agent/.claude"
 export NODE_OPTIONS="--max-old-space-size=4096"
 export USE_BUILTIN_RIPGREP=0
 

@@ -122,10 +122,11 @@ class DockerSandbox:
         env: dict[str, str],
     ) -> tuple[list[str], dict[str, str]]:
         """Wrap a command to run inside the sandbox container."""
-        # Locate host's Claude config dir for auth credentials
+        # Locate host's Claude config for auth credentials
         host_claude_dir = Path(
             os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")
         )
+        host_claude_json = Path.home() / ".claude.json"
 
         docker_cmd = [
             "docker", "run", "--rm", "-i",
@@ -141,11 +142,15 @@ class DockerSandbox:
             "-e", "HOME=/home/agent",
         ]
 
-        # Mount host's Claude config to a staging path (read-only).
+        # Mount host's Claude config to staging paths (read-only).
         # The entrypoint copies auth credentials to the writable home dir.
         if host_claude_dir.is_dir():
             docker_cmd.extend([
                 "-v", f"{host_claude_dir}:/home/agent/.claude-host:ro",
+            ])
+        if host_claude_json.is_file():
+            docker_cmd.extend([
+                "-v", f"{host_claude_json}:/home/agent/.claude.json-host:ro",
             ])
 
         # Inject all resolved host IPs via --add-host
