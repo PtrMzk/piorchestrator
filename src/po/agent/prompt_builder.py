@@ -20,10 +20,19 @@ def build_prompt(
 
     if previous_error:
         parts.append(
-            "\n## Previous Attempt Failed\n"
-            "A previous attempt at this task failed during merge/verification "
-            "with the following error. Please fix the underlying issue:\n"
-            f"```\n{previous_error}\n```"
+            "\n## RETRY — Previous Attempt Failed\n"
+            "This is a retry. A previous attempt already made progress but "
+            "failed verification. The branch contains the previous work.\n\n"
+            "**Error:**\n"
+            f"```\n{previous_error}\n```\n\n"
+            "**IMPORTANT — Retry rules:**\n"
+            "1. You have limited turns. Do NOT investigate extensively — "
+            "go straight to fixing the error.\n"
+            "2. Run the verification command FIRST to reproduce the failure, "
+            "then fix the minimum needed to make it pass.\n"
+            "3. Commit immediately after the fix passes verification.\n"
+            "4. Do NOT do cosmetic cleanup, README updates, or refactoring — "
+            "ONLY fix what's broken."
         )
 
     if global_context:
