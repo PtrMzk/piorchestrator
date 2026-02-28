@@ -239,6 +239,14 @@ building, and command wrapping.
 `src/po/sandbox/entrypoint.sh` (new), `src/po/agent/launcher.py`, `src/po/orchestrator/loop.py`,
 `src/po/cli.py`, `src/po/config.py`, `pyproject.toml`, `tests/test_sandbox.py` (new)
 
+**Follow-up fix:** Docker sandbox onboarding bypass, Python runtime, and package registry access.
+Added Python 3 + uv and ripgrep + musl compat libs to Dockerfile. Pre-seeded `~/.claude.json`
+with `hasCompletedOnboarding: true` to prevent interactive onboarding hang. Generalized
+`_resolve_api_ips()` → `_resolve_hosts()` to resolve multiple hostnames (API + package registries).
+Entrypoint now allows DNS (port 53) and matches registry hosts in `/etc/hosts` for iptables rules.
+Added `SANDBOX_REGISTRY_HOSTS` config constant and `CLAUDE_CONFIG_DIR`/`NODE_OPTIONS`/`USE_BUILTIN_RIPGREP`
+env vars in entrypoint.
+
 ### ~~39. Codebase documentation scan~~ — DONE
 Added `po scan` command that invokes Claude to analyze an existing codebase and generate
 nested documentation under `docs/codebase/` (configurable via `--output-dir`). Created

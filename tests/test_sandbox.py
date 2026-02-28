@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from po.sandbox.docker import DockerSandbox, _build_image, _check_docker, _resolve_api_ips
+from po.sandbox.docker import DockerSandbox, _build_image, _check_docker, _resolve_hosts
 from po.sandbox.provider import NoSandbox, SandboxError
 
 
@@ -30,16 +30,32 @@ class TestNoSandbox:
         await sandbox.prepare()  # Should not raise
 
 
-class TestResolveApiIps:
-    def test_resolves_ips(self) -> None:
+class TestResolveHosts:
+    def test_resolves_single_host(self) -> None:
         fake_results = [
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.2.3.4", 443)),
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("5.6.7.8", 443)),
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.2.3.4", 443)),  # duplicate
         ]
         with patch("po.sandbox.docker.socket.getaddrinfo", return_value=fake_results):
-            ips = _resolve_api_ips("example.com")
-        assert ips == ["1.2.3.4", "5.6.7.8"]
+            result = _resolve_hosts(["example.com"])
+        assert result == {"example.com": ["1.2.3.4", "5.6.7.8"]}
+
+    def test_resolves_multiple_hosts(self) -> None:
+        def fake_getaddrinfo(hostname: str, port: int, family: int, type: int) -> list:
+            if hostname == "api.anthropic.com":
+                return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", 443))]
+            elif hostname == "pypi.org":
+                return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.2", 443))]
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.3", 443))]
+
+        with patch("po.sandbox.docker.socket.getaddrinfo", side_effect=fake_getaddrinfo):
+            result = _resolve_hosts(["api.anthropic.com", "pypi.org", "registry.npmjs.org"])
+        assert result == {
+            "api.anthropic.com": ["10.0.0.1"],
+            "pypi.org": ["10.0.0.2"],
+            "registry.npmjs.org": ["10.0.0.3"],
+        }
 
     def test_dns_failure_raises_sandbox_error(self) -> None:
         with (
@@ -49,14 +65,14 @@ class TestResolveApiIps:
             ),
             pytest.raises(SandboxError, match="Cannot resolve"),
         ):
-            _resolve_api_ips("bad.host")
+            _resolve_hosts(["bad.host"])
 
     def test_empty_results_raises_sandbox_error(self) -> None:
         with (
             patch("po.sandbox.docker.socket.getaddrinfo", return_value=[]),
             pytest.raises(SandboxError, match="no addresses"),
         ):
-            _resolve_api_ips("empty.host")
+            _resolve_hosts(["empty.host"])
 
 
 class TestCheckDocker:
@@ -130,7 +146,10 @@ class TestBuildImage:
 class TestDockerSandbox:
     def test_wrap_command_structure(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(image_name="test-image:latest")
-        sandbox._api_ips = ["1.2.3.4", "5.6.7.8"]
+        sandbox._host_ips = {
+            "api.anthropic.com": ["1.2.3.4", "5.6.7.8"],
+            "pypi.org": ["10.0.0.1"],
+        }
 
         project = tmp_path / "project"
         project.mkdir()
@@ -162,10 +181,11 @@ class TestDockerSandbox:
         env_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-e"]
         assert any("ANTHROPIC_API_KEY=sk-test-123" in e for e in env_args)
 
-        # --add-host entries for API IPs
+        # --add-host entries for all hosts
         add_host_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "--add-host"]
         assert "api.anthropic.com:1.2.3.4" in add_host_args
         assert "api.anthropic.com:5.6.7.8" in add_host_args
+        assert "pypi.org:10.0.0.1" in add_host_args
 
         # NET_ADMIN capability
         assert "--cap-add=NET_ADMIN" in new_cmd
@@ -180,7 +200,7 @@ class TestDockerSandbox:
 
     def test_wrap_command_with_no_api_key(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()
-        sandbox._api_ips = ["1.2.3.4"]
+        sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
 
         new_cmd, _ = sandbox.wrap_command(
             ["claude", "-p", "hi"],
@@ -199,7 +219,12 @@ class TestDockerSandbox:
 
         with (
             patch("po.sandbox.docker._check_docker") as mock_check,
-            patch("po.sandbox.docker._resolve_api_ips", return_value=["10.0.0.1"]) as mock_dns,
+            patch("po.sandbox.docker._resolve_hosts", return_value={
+                "api.anthropic.com": ["10.0.0.1"],
+                "pypi.org": ["10.0.0.2"],
+                "files.pythonhosted.org": ["10.0.0.3"],
+                "registry.npmjs.org": ["10.0.0.4"],
+            }) as mock_dns,
             patch("po.sandbox.docker._build_image") as mock_build,
         ):
             await sandbox.prepare()
@@ -207,11 +232,12 @@ class TestDockerSandbox:
         mock_check.assert_called_once()
         mock_dns.assert_called_once()
         mock_build.assert_called_once_with("test:v1")
-        assert sandbox._api_ips == ["10.0.0.1"]
+        assert "api.anthropic.com" in sandbox._host_ips
+        assert sandbox._host_ips["api.anthropic.com"] == ["10.0.0.1"]
 
     def test_tmpfs_mounts(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()
-        sandbox._api_ips = ["1.2.3.4"]
+        sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
 
         new_cmd, _ = sandbox.wrap_command(
             ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
@@ -223,7 +249,7 @@ class TestDockerSandbox:
 
     def test_hostname_set(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()
-        sandbox._api_ips = ["1.2.3.4"]
+        sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
 
         new_cmd, _ = sandbox.wrap_command(
             ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
@@ -231,6 +257,25 @@ class TestDockerSandbox:
 
         hostname_idx = new_cmd.index("--hostname")
         assert new_cmd[hostname_idx + 1] == "po-agent"
+
+    def test_wrap_command_includes_registry_hosts(self, tmp_path: Path) -> None:
+        sandbox = DockerSandbox()
+        sandbox._host_ips = {
+            "api.anthropic.com": ["10.0.0.1"],
+            "pypi.org": ["10.0.0.2"],
+            "files.pythonhosted.org": ["10.0.0.3", "10.0.0.4"],
+            "registry.npmjs.org": ["10.0.0.5"],
+        }
+
+        new_cmd, _ = sandbox.wrap_command(
+            ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
+        )
+
+        add_host_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "--add-host"]
+        assert "pypi.org:10.0.0.2" in add_host_args
+        assert "files.pythonhosted.org:10.0.0.3" in add_host_args
+        assert "files.pythonhosted.org:10.0.0.4" in add_host_args
+        assert "registry.npmjs.org:10.0.0.5" in add_host_args
 
 
 # --- helpers ---

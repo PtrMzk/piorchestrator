@@ -32,6 +32,7 @@ FAILURE_FILE = ".po-failure.json"
 # Sandbox defaults
 SANDBOX_IMAGE_NAME = "po-agent:latest"
 SANDBOX_API_HOST = "api.anthropic.com"
+SANDBOX_REGISTRY_HOSTS = ["pypi.org", "files.pythonhosted.org", "registry.npmjs.org"]
 
 # Task statuses
 STATUS_PENDING = "pending"

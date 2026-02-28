@@ -9,25 +9,31 @@ import socket
 import subprocess
 from pathlib import Path
 
-from po.config import SANDBOX_API_HOST, SANDBOX_IMAGE_NAME
+from po.config import SANDBOX_API_HOST, SANDBOX_IMAGE_NAME, SANDBOX_REGISTRY_HOSTS
 from po.sandbox.provider import SandboxError
 
 logger = logging.getLogger(__name__)
 
 
-def _resolve_api_ips(hostname: str = SANDBOX_API_HOST) -> list[str]:
-    """Resolve the API hostname to a list of IPv4 addresses."""
-    try:
-        results = socket.getaddrinfo(hostname, 443, socket.AF_INET, socket.SOCK_STREAM)
-    except socket.gaierror as e:
-        raise SandboxError(
-            f"Cannot resolve {hostname}: {e}\n"
-            "Check your network connection."
-        ) from e
-    ips = list(dict.fromkeys(r[4][0] for r in results))
-    if not ips:
-        raise SandboxError(f"DNS returned no addresses for {hostname}")
-    return ips
+def _resolve_hosts(hostnames: list[str]) -> dict[str, list[str]]:
+    """Resolve a list of hostnames to their IPv4 addresses.
+
+    Returns a dict mapping each hostname to its list of unique IPv4 addresses.
+    """
+    result: dict[str, list[str]] = {}
+    for hostname in hostnames:
+        try:
+            infos = socket.getaddrinfo(hostname, 443, socket.AF_INET, socket.SOCK_STREAM)
+        except socket.gaierror as e:
+            raise SandboxError(
+                f"Cannot resolve {hostname}: {e}\n"
+                "Check your network connection."
+            ) from e
+        ips = list(dict.fromkeys(r[4][0] for r in infos))
+        if not ips:
+            raise SandboxError(f"DNS returned no addresses for {hostname}")
+        result[hostname] = ips
+    return result
 
 
 def _check_docker() -> None:
@@ -88,20 +94,22 @@ class DockerSandbox:
     Filesystem: mounts project_root at the same absolute path inside the
     container, preserving git worktree references.
 
-    Network: only allows HTTPS to api.anthropic.com.  DNS is blocked;
-    API IPs are injected via --add-host and the entrypoint configures
-    iptables to drop everything else.
+    Network: allows HTTPS to api.anthropic.com and package registries.
+    DNS is allowed so package managers can resolve CDN hostnames.
+    API and registry IPs are injected via --add-host and the entrypoint
+    configures iptables to reject everything else.
     """
 
     def __init__(self, image_name: str = SANDBOX_IMAGE_NAME) -> None:
         self._image_name = image_name
-        self._api_ips: list[str] = []
+        self._host_ips: dict[str, list[str]] = {}
 
     async def prepare(self) -> None:
-        """Check Docker, resolve API IPs, build the image."""
+        """Check Docker, resolve host IPs, build the image."""
         _check_docker()
-        self._api_ips = _resolve_api_ips()
-        logger.debug("Resolved %s to %s", SANDBOX_API_HOST, self._api_ips)
+        all_hosts = [SANDBOX_API_HOST] + SANDBOX_REGISTRY_HOSTS
+        self._host_ips = _resolve_hosts(all_hosts)
+        logger.debug("Resolved hosts: %s", self._host_ips)
         _build_image(self._image_name)
 
     def wrap_command(
@@ -127,9 +135,10 @@ class DockerSandbox:
             "-e", "HOME=/home/agent",
         ]
 
-        # Inject API IPs via --add-host
-        for ip in self._api_ips:
-            docker_cmd.extend(["--add-host", f"{SANDBOX_API_HOST}:{ip}"])
+        # Inject all resolved host IPs via --add-host
+        for hostname, ips in self._host_ips.items():
+            for ip in ips:
+                docker_cmd.extend(["--add-host", f"{hostname}:{ip}"])
 
         # Network isolation capabilities
         docker_cmd.extend([
