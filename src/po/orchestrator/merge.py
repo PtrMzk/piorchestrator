@@ -37,14 +37,31 @@ class MergeResult:
 
 
 class RebaseMerger:
-    """Merge strategy: rebase onto main, then fast-forward merge.
+    """Merge strategy: rebase onto base branch, then fast-forward merge.
 
     If rebase conflicts, invokes a merge agent (Claude) to resolve.
     Merge is serialized via an asyncio.Lock (one merge at a time).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, base_branch: str | None = None) -> None:
         self._lock = asyncio.Lock()
+        self._base_branch = base_branch
+
+    def _get_base_branch(self, project_root: Path) -> str:
+        """Return the base branch name, auto-detecting from HEAD if needed."""
+        if self._base_branch is not None:
+            return self._base_branch
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            self._base_branch = result.stdout.strip()
+        else:
+            self._base_branch = "main"
+        return self._base_branch
 
     def _run_git(self, args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -155,6 +172,8 @@ class RebaseMerger:
         project_root: Path,
     ) -> MergeResult:
         """Synchronous merge logic."""
+        base = self._get_base_branch(project_root)
+
         # Clean up stale rebase/merge state from previous failed attempts
         git_dir = project_root / ".git"
         for stale_dir in ("rebase-merge", "rebase-apply"):
@@ -166,14 +185,14 @@ class RebaseMerger:
         )
         if merge_head.returncode == 0:
             self._run_git(["merge", "--abort"], project_root)
-        self._run_git(["checkout", "-f", "main"], project_root)
+        self._run_git(["checkout", "-f", base], project_root)
 
         # Ensure .gitignore covers build artifacts before merging
         self._ensure_gitignore(project_root)
 
-        # Step 1: Rebase task branch onto main
-        logger.debug("Rebasing %s onto main", branch)
-        result = self._run_git(["rebase", "main", branch], project_root)
+        # Step 1: Rebase task branch onto base branch
+        logger.debug("Rebasing %s onto %s", branch, base)
+        result = self._run_git(["rebase", base, branch], project_root)
         if result.returncode != 0:
             # Abort the failed rebase
             logger.info(
@@ -184,8 +203,8 @@ class RebaseMerger:
             # Try merge agent resolution
             return self._try_agent_merge(branch, task_id, project_root, verification)
 
-        # Step 2: Fast-forward merge into main
-        self._run_git(["checkout", "main"], project_root)
+        # Step 2: Fast-forward merge into base branch
+        self._run_git(["checkout", base], project_root)
         result = self._run_git(["merge", "--ff-only", branch], project_root)
         if result.returncode != 0:
             return MergeResult(
@@ -215,7 +234,8 @@ class RebaseMerger:
         2. If there are conflicts, invoke Claude to resolve them.
         3. Complete the merge commit and run verification.
         """
-        self._run_git(["checkout", "-f", "main"], project_root)
+        base = self._get_base_branch(project_root)
+        self._run_git(["checkout", "-f", base], project_root)
 
         # Start merge without committing so we can inspect conflicts
         result = self._run_git(
@@ -278,9 +298,10 @@ class RebaseMerger:
             )
             return True
 
+        base = self._get_base_branch(project_root)
         prompt = (
             f"You are resolving git merge conflicts for task '{task_id}' "
-            f"(branch '{branch}' into main).\n\n"
+            f"(branch '{branch}' into {base}).\n\n"
             f"The following files have merge conflicts:\n{conflicted_files}\n\n"
             "For each conflicted file:\n"
             "1. Read the file and understand both sides of the conflict.\n"
@@ -353,4 +374,4 @@ class RebaseMerger:
 
         # Check that HEAD advanced (merge commit was created)
         log_result = self._run_git(["log", "--oneline", "-1"], project_root)
-        return "Merge" in log_result.stdout or result.returncode == 0
+        return "Merge" in log_result.stdout or proc.returncode == 0

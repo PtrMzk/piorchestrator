@@ -65,9 +65,15 @@ class LiveDisplay:
     def stop(self) -> None:
         """Exit the Rich Live context."""
         if self._live is not None:
-            # Final render with latest state
-            self._live.update(self._build_tree())
-            self._live.stop()
+            try:
+                # Final render with latest state
+                self._live.update(self._build_tree())
+                self._live.stop()
+            except Exception:
+                # Rich can crash during stop (e.g. unicode data import
+                # failures on Python 3.13). Since this is cleanup code,
+                # swallow the error and ensure _live is cleared.
+                pass
             self._live = None
 
     def __call__(self, event: str, task_id: str, detail: str) -> None:
