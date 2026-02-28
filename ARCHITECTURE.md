@@ -208,4 +208,4 @@ verification, priority, model, max_budget_usd, tags[]
 - **SQLite WAL mode**: enables safe concurrent read/write access to the task database
 - **Event callback system**: decouples orchestration from display (can emit events to different handlers)
 - **Namespace subtask IDs**: `{parent_id}/{subtask_id}` prevents ID collisions between parent and child tasks
-- **Docker sandbox (opt-in)**: `--sandbox` flag wraps agents in Docker containers. Project root is mounted at the same absolute path (preserving worktree references). Network is firewalled via iptables to allow only `api.anthropic.com:443`. The `SandboxProvider` protocol allows swapping isolation backends without changing the orchestration logic
+- **Docker sandbox (default)**: Agents run inside Docker containers by default. Project root is mounted at the same absolute path (preserving worktree references). Network is firewalled via iptables to allow only `api.anthropic.com:443`. Disable with `--no-sandbox`. The `SandboxProvider` protocol allows swapping isolation backends without changing the orchestration logic

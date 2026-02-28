@@ -127,8 +127,8 @@ def main() -> None:
         "--max-turns", type=int, help="Max agent turns per task",
     )
     run_parser.add_argument(
-        "--sandbox", action="store_true",
-        help="Run agents inside Docker containers with network isolation",
+        "--sandbox", action=argparse.BooleanOptionalAction, default=True,
+        help="Run agents inside Docker containers with network isolation (default: on)",
     )
 
     # po status
@@ -396,9 +396,9 @@ def cmd_run(args: argparse.Namespace) -> None:
     model_override = args.model
     max_turns = args.max_turns or DEFAULT_MAX_TURNS
 
-    # Construct sandbox provider if requested
+    # Construct sandbox provider (default: on, use --no-sandbox to disable)
     sandbox = None
-    if getattr(args, "sandbox", False):
+    if getattr(args, "sandbox", True):
         from po.sandbox import DockerSandbox
         sandbox = DockerSandbox()
 
