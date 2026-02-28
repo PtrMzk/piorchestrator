@@ -263,9 +263,11 @@ Approved outline:
 
     base += """
 
-IMPORTANT: Return the JSON object as your text response. \
+IMPORTANT: Return ONLY the JSON object as your text response. \
 Do NOT use Write, Edit, or Bash tools to create any files \
-— just output the raw JSON directly."""
+— just output the raw JSON directly. \
+Keep your thinking brief and focused on the task structure. \
+Do NOT output any text before or after the JSON object."""
     return base
 
 
@@ -383,9 +385,11 @@ Generate a valid PO orchestrator spec JSON file for the following project descri
 
     base += """
 
-IMPORTANT: Return the JSON object as your text response. \
+IMPORTANT: Return ONLY the JSON object as your text response. \
 Do NOT use Write, Edit, or Bash tools to create any files \
-— just output the raw JSON directly."""
+— just output the raw JSON directly. \
+Keep your thinking brief and focused on the task structure. \
+Do NOT output any text before or after the JSON object."""
     return base
 
 
@@ -401,6 +405,8 @@ def _invoke_claude(
         Tuple of (result_text, session_id or None).
     """
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    # Allow large output for spec generation (thinking + JSON can exceed 32K default)
+    env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "128000"
     cmd = [
         "claude",
         "-p", prompt,
