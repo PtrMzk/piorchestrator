@@ -29,6 +29,12 @@ git config --global --add safe.directory '*'
 git config --global user.name "po-agent"
 git config --global user.email "po-agent@localhost"
 
+# --- Claude onboarding bypass ---
+# Must run here (not Dockerfile) because --tmpfs /home/agent wipes the home dir
+mkdir -p /home/agent/.claude
+echo '{"hasCompletedOnboarding":true}' > /home/agent/.claude.json
+chown -R agent:agent /home/agent/.claude /home/agent/.claude.json
+
 # --- Environment ---
 export CLAUDE_CONFIG_DIR="/home/agent/.claude"
 export NODE_OPTIONS="--max-old-space-size=4096"
