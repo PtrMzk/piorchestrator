@@ -29,6 +29,10 @@ DEFAULT_MAX_TURNS = 50
 SUBTASKS_FILE = ".po-subtasks.json"
 FAILURE_FILE = ".po-failure.json"
 
+# Sandbox defaults
+SANDBOX_IMAGE_NAME = "po-agent:latest"
+SANDBOX_API_HOST = "api.anthropic.com"
+
 # Task statuses
 STATUS_PENDING = "pending"
 STATUS_RUNNING = "running"

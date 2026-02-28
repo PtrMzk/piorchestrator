@@ -126,6 +126,10 @@ def main() -> None:
     run_parser.add_argument(
         "--max-turns", type=int, help="Max agent turns per task",
     )
+    run_parser.add_argument(
+        "--sandbox", action="store_true",
+        help="Run agents inside Docker containers with network isolation",
+    )
 
     # po status
     status_parser = subparsers.add_parser("status", help="Show task states and progress")
@@ -392,6 +396,12 @@ def cmd_run(args: argparse.Namespace) -> None:
     model_override = args.model
     max_turns = args.max_turns or DEFAULT_MAX_TURNS
 
+    # Construct sandbox provider if requested
+    sandbox = None
+    if getattr(args, "sandbox", False):
+        from po.sandbox import DockerSandbox
+        sandbox = DockerSandbox()
+
     # Choose display mode based on TTY
     live_display = None
     if sys.stdout.isatty():
@@ -412,6 +422,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         on_event=on_event,
         model_override=model_override,
         max_turns=max_turns,
+        sandbox=sandbox,
     )
 
     print(f"Starting orchestration (concurrency={max_concurrency})...")

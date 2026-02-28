@@ -16,6 +16,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/po"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/po/sandbox/Dockerfile" = "po/sandbox/Dockerfile"
+"src/po/sandbox/entrypoint.sh" = "po/sandbox/entrypoint.sh"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

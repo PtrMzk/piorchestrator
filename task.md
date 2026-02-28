@@ -225,6 +225,20 @@ event printer. 13 new tests covering the ladder function and integration scenari
 
 **Files:** `src/po/config.py`, `src/po/orchestrator/loop.py`, `src/po/cli.py`, `tests/test_escalation.py` (new)
 
+### ~~40. Docker-based agent sandboxing~~ — DONE
+Added `SandboxProvider` protocol with `NoSandbox` (passthrough, default) and `DockerSandbox`
+implementations. `DockerSandbox` wraps agent commands in `docker run` with: project root
+mounted at the same absolute path (preserving worktree references), iptables firewall allowing
+only `api.anthropic.com:443`, tmpfs for `/tmp` and `/home/agent`, IPv6 disabled. Entrypoint
+runs as root for iptables setup then drops to non-root `agent` user via `su-exec`. Opt-in via
+`po run --sandbox`. 15 new tests covering protocol, DNS resolution, Docker checks, image
+building, and command wrapping.
+
+**Files:** `src/po/sandbox/__init__.py` (new), `src/po/sandbox/provider.py` (new),
+`src/po/sandbox/docker.py` (new), `src/po/sandbox/Dockerfile` (new),
+`src/po/sandbox/entrypoint.sh` (new), `src/po/agent/launcher.py`, `src/po/orchestrator/loop.py`,
+`src/po/cli.py`, `src/po/config.py`, `pyproject.toml`, `tests/test_sandbox.py` (new)
+
 ### ~~39. Codebase documentation scan~~ — DONE
 Added `po scan` command that invokes Claude to analyze an existing codebase and generate
 nested documentation under `docs/codebase/` (configurable via `--output-dir`). Created

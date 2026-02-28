@@ -24,6 +24,7 @@ from po.config import (
 )
 from po.db.queries import AgentResult, SqliteTaskStore
 from po.orchestrator.merge import MergeResult, MergeStrategy, RebaseMerger
+from po.sandbox.provider import SandboxProvider
 from po.worktree.manager import GitWorktreeManager, WorktreeProvider
 
 logger = logging.getLogger(__name__)
@@ -49,13 +50,15 @@ class OrchestratorLoop:
         on_event: EventCallback | None = None,
         model_override: str | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
+        sandbox: SandboxProvider | None = None,
     ) -> None:
         self.store = store
         self.project_root = project_root
         self.max_concurrency = max_concurrency
         self.worktree_mgr = worktree_manager or GitWorktreeManager()
-        self.agent_runner = agent_runner or ClaudeCodeRunner()
+        self.agent_runner = agent_runner or ClaudeCodeRunner(sandbox=sandbox)
         self.merger = merger or RebaseMerger()
+        self._sandbox = sandbox
         self.global_context = global_context
         self.global_context_files = global_context_files or []
         self.max_retries = max_retries
@@ -73,6 +76,10 @@ class OrchestratorLoop:
 
     async def run(self) -> None:
         """Run the orchestration loop until all tasks are terminal."""
+        # Prepare sandbox (no-op for NoSandbox)
+        if self._sandbox is not None:
+            await self._sandbox.prepare()
+
         # Install signal handlers for graceful shutdown
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
