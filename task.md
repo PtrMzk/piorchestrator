@@ -215,3 +215,12 @@ CLI feedback loop passes `session_id` back so revisions resume the same Claude s
 14 new tests for `tool_summary`, updated existing tests for new tuple return signatures.
 
 **Files:** `src/po/display/tools.py` (new), `src/po/init/generator.py`, `src/po/cli.py`, `src/po/display/live.py`, `tests/test_display.py`, `tests/test_init.py`
+
+### ~~38. Model escalation on retries~~ — DONE
+Added `MODEL_LADDER` constant and `escalate_model(base_model, attempt)` pure function to
+`config.py`. When tasks retry (attempt > 1) and no `--model` override is set, the
+orchestrator escalates the model up the ladder (haiku → sonnet → opus). Emits a
+`model_escalated` event when the model changes. Added `⬆` and `⊘` symbols to the CLI
+event printer. 13 new tests covering the ladder function and integration scenarios.
+
+**Files:** `src/po/config.py`, `src/po/orchestrator/loop.py`, `src/po/cli.py`, `tests/test_escalation.py` (new)

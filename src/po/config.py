@@ -16,6 +16,9 @@ DEFAULT_MAX_CONCURRENCY = 5
 # Default model for task agents
 DEFAULT_MODEL = "haiku"
 
+# Model escalation ladder (weakest → strongest)
+MODEL_LADDER = ["haiku", "sonnet", "opus"]
+
 # Default max budget per task in USD
 DEFAULT_MAX_BUDGET_USD = 2.0
 
@@ -41,6 +44,19 @@ TERMINAL_STATUSES = frozenset({
 # Task sources
 SOURCE_SPEC = "spec"
 SOURCE_RUNTIME = "runtime"
+
+
+def escalate_model(base_model: str, attempt: int) -> str:
+    """Return the model to use for a given retry attempt.
+
+    attempt 1 → base model, attempt 2 → next up the ladder, attempt 3+ → opus.
+    Models not in the ladder are returned unchanged.
+    """
+    if base_model not in MODEL_LADDER:
+        return base_model
+    base_idx = MODEL_LADDER.index(base_model)
+    target_idx = min(base_idx + attempt - 1, len(MODEL_LADDER) - 1)
+    return MODEL_LADDER[target_idx]
 
 
 def po_dir(project_root: Path) -> Path:

@@ -139,7 +139,7 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | Module | Purpose |
 |--------|---------|
 | `cli.py` | CLI argument parsing, command routing |
-| `config.py` | Constants and path helpers |
+| `config.py` | Constants, path helpers, model escalation ladder |
 | `spec/schema.py` | `ProjectSpec` and `TaskSpec` dataclasses |
 | `spec/loader.py` | JSON spec loading and validation |
 | `db/connection.py` | SQLite connection management |
@@ -188,6 +188,7 @@ verification, priority, model, max_budget_usd, tags[]
 - **Dynamic decomposition**: agents can break tasks into subtasks at runtime by writing `.po-subtasks.json`
 - **Merge conflict auto-resolution**: a separate Claude agent resolves rebase conflicts if they occur
 - **Retry with state preservation**: failed task branches are kept so retry attempts can build on partial progress
+- **Model escalation on retries**: when tasks retry, the model is automatically escalated up the ladder (haiku → sonnet → opus) to increase success probability; `--model` override disables escalation
 - **macOS sleep prevention**: `caffeinate` is spawned during orchestration to prevent the machine from sleeping
 - **SQLite WAL mode**: enables safe concurrent read/write access to the task database
 - **Event callback system**: decouples orchestration from display (can emit events to different handlers)

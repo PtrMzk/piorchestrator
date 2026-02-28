@@ -306,6 +306,8 @@ def _live_event_printer(event: str, task_id: str, detail: str) -> None:
         "task_failed": "✗",
         "task_retrying": "↻",
         "task_decomposed": "◈",
+        "model_escalated": "⬆",
+        "dependents_cancelled": "⊘",
     }
     symbol = symbols.get(event, "·")
     parts = [f"  {symbol} {task_id} {event.replace('task_', '')}"]

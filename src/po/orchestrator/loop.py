@@ -19,6 +19,7 @@ from po.config import (
     STATUS_DECOMPOSED,
     STATUS_PENDING,
     TERMINAL_STATUSES,
+    escalate_model,
     logs_dir,
 )
 from po.db.queries import AgentResult, SqliteTaskStore
@@ -293,9 +294,21 @@ class OrchestratorLoop:
             previous_error=previous_error,
         )
 
-        # Run agent
+        # Run agent — escalate model on retries unless user overrode
         max_budget = task["max_budget_usd"]
-        model = self.model_override or str(task["model"])
+        if self.model_override:
+            model = self.model_override
+        else:
+            base_model = str(task["model"])
+            # Re-read task to get current attempt (set_running incremented it)
+            current_task = self.store.get_task(task_id) or task
+            current_attempt = int(current_task["attempt"])
+            model = escalate_model(base_model, current_attempt)
+            if model != base_model:
+                self._emit(
+                    "model_escalated", task_id,
+                    f"{base_model} → {model}",
+                )
         result = await self.agent_runner.run(
             task_id=task_id,
             prompt=prompt,
