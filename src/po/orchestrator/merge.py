@@ -315,21 +315,30 @@ class RebaseMerger:
         )
 
         assert proc.stdout is not None
-        with open(log_file, "wb") as fh:
-            for raw_line in proc.stdout:
-                line = raw_line.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
-                try:
-                    msg = json.loads(line)
-                except json.JSONDecodeError:
-                    fh.write(raw_line)
+        try:
+            with open(log_file, "wb") as fh:
+                for raw_line in proc.stdout:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except json.JSONDecodeError:
+                        fh.write(raw_line)
+                        fh.flush()
+                        continue
+                    msg["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    fh.write(json.dumps(msg).encode())
+                    fh.write(b"\n")
                     fh.flush()
-                    continue
-                msg["timestamp"] = datetime.now(timezone.utc).isoformat()
-                fh.write(json.dumps(msg).encode())
-                fh.write(b"\n")
-                fh.flush()
+        except KeyboardInterrupt:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            raise
 
         proc.wait()
 

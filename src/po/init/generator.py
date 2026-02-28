@@ -469,6 +469,14 @@ def _invoke_claude(
             if msg.get("type") == "result":
                 result_text = msg.get("result", "")
                 result_session_id = msg.get("session_id")
+    except KeyboardInterrupt:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        raise
     finally:
         status.stop()
         if fh:
