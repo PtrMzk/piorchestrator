@@ -342,6 +342,9 @@ class OrchestratorLoop:
                             cost_usd=result.cost_usd,
                             duration_ms=result.duration_ms,
                             session_id=result.session_id,
+                            input_tokens=result.input_tokens,
+                            output_tokens=result.output_tokens,
+                            num_turns=result.num_turns,
                         )
                         self._handle_failure(result.task_id)
                         self._emit("task_failed", result.task_id, preverify_fail)
@@ -373,9 +376,14 @@ class OrchestratorLoop:
                     duration_ms=result.duration_ms,
                     agent_result=result.result_text,
                     session_id=result.session_id,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    num_turns=result.num_turns,
                 )
-                cost = f"${result.cost_usd:.4f}" if result.cost_usd else ""
-                self._emit("task_completed", result.task_id, cost)
+                self._emit(
+                    "task_completed", result.task_id,
+                    _format_result_detail(result),
+                )
             else:
                 err = merge_result.error_message or "Merge failed"
                 # Check if we can retry — attempt was already incremented
@@ -399,6 +407,9 @@ class OrchestratorLoop:
                         cost_usd=result.cost_usd,
                         duration_ms=result.duration_ms,
                         session_id=result.session_id,
+                        input_tokens=result.input_tokens,
+                        output_tokens=result.output_tokens,
+                        num_turns=result.num_turns,
                     )
                     self._handle_failure(result.task_id)
                     self._emit("task_failed", result.task_id, err)
@@ -456,6 +467,9 @@ class OrchestratorLoop:
                     cost_usd=result.cost_usd,
                     duration_ms=result.duration_ms,
                     session_id=result.session_id,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    num_turns=result.num_turns,
                 )
                 self._handle_failure(result.task_id)
                 self._emit("task_failed", result.task_id, err)
@@ -508,3 +522,27 @@ class OrchestratorLoop:
                 "dependents_cancelled", task_id,
                 f"{cancelled_count} task(s)",
             )
+
+
+def _format_result_detail(result: AgentResult) -> str:
+    """Format agent result as a compact detail string for event callbacks.
+
+    Example: "12.5k in / 3.2k out / 25 turns"
+    """
+    parts: list[str] = []
+    if result.input_tokens:
+        parts.append(_format_tokens(result.input_tokens) + " in")
+    if result.output_tokens:
+        parts.append(_format_tokens(result.output_tokens) + " out")
+    if result.num_turns:
+        parts.append(f"{result.num_turns} turns")
+    return " / ".join(parts)
+
+
+def _format_tokens(n: int) -> str:
+    """Format token count compactly: 1234 → '1.2k', 1234567 → '1.2M'."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}k"
+    return str(n)

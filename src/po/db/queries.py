@@ -40,6 +40,9 @@ class TaskStore(Protocol):
         duration_ms: int | None,
         agent_result: str | None,
         session_id: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        num_turns: int | None = None,
     ) -> None: ...
     def set_failed(
         self,
@@ -48,6 +51,9 @@ class TaskStore(Protocol):
         cost_usd: float | None,
         duration_ms: int | None,
         session_id: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        num_turns: int | None = None,
     ) -> None: ...
     def set_error_message(self, task_id: str, error_message: str) -> None: ...
     def get_ready_task_ids(self) -> list[str]: ...
@@ -68,6 +74,9 @@ class AgentResult:
     error_message: str | None = None
     subtasks: list[TaskSpec] | None = None
     session_id: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    num_turns: int | None = None
 
 
 class SqliteTaskStore:
@@ -197,16 +206,21 @@ class SqliteTaskStore:
         duration_ms: int | None = None,
         agent_result: str | None = None,
         session_id: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        num_turns: int | None = None,
     ) -> None:
         """Mark a task as completed."""
         now = datetime.now(UTC).isoformat()
         self.conn.execute(
             """UPDATE tasks
                SET status = ?, cost_usd = ?, duration_ms = ?,
-                   agent_result = ?, session_id = ?, completed_at = ?
+                   agent_result = ?, session_id = ?, completed_at = ?,
+                   input_tokens = ?, output_tokens = ?, num_turns = ?
                WHERE id = ?""",
             (STATUS_COMPLETED, cost_usd, duration_ms,
-             agent_result, session_id, now, task_id),
+             agent_result, session_id, now,
+             input_tokens, output_tokens, num_turns, task_id),
         )
         self.conn.commit()
 
@@ -217,6 +231,9 @@ class SqliteTaskStore:
         cost_usd: float | None = None,
         duration_ms: int | None = None,
         session_id: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        num_turns: int | None = None,
     ) -> None:
         """Mark a task as failed."""
         now = datetime.now(UTC).isoformat()
@@ -224,10 +241,12 @@ class SqliteTaskStore:
             """UPDATE tasks
                SET status = ?, error_message = ?,
                    cost_usd = ?, duration_ms = ?,
-                   session_id = ?, completed_at = ?
+                   session_id = ?, completed_at = ?,
+                   input_tokens = ?, output_tokens = ?, num_turns = ?
                WHERE id = ?""",
             (STATUS_FAILED, error_message, cost_usd,
-             duration_ms, session_id, now, task_id),
+             duration_ms, session_id, now,
+             input_tokens, output_tokens, num_turns, task_id),
         )
         self.conn.commit()
 

@@ -140,29 +140,31 @@ class TestFormatExecutionPlan:
 
 
 class TestFormatCostSummary:
-    def test_no_costs(self) -> None:
-        tasks = [_make_task(cost_usd=None, duration_ms=None)]
+    def test_no_tokens(self) -> None:
+        tasks = [_make_task(input_tokens=None, output_tokens=None, duration_ms=None)]
         result = format_cost_summary(tasks)
         assert "—" in result
-        assert "$0.0000" in result  # total
+        assert "TOTAL" in result
 
-    def test_with_costs(self) -> None:
-        tasks = [_make_task(cost_usd=0.1234, duration_ms=1500)]
+    def test_with_tokens(self) -> None:
+        tasks = [_make_task(input_tokens=50000, output_tokens=3000, num_turns=10, duration_ms=1500)]
         result = format_cost_summary(tasks)
-        assert "$0.1234" in result
+        assert "50.0k" in result
+        assert "3.0k" in result
         assert "1.5s" in result
 
     def test_total_calculation(self) -> None:
         tasks = [
-            _make_task(id="a", cost_usd=0.10),
-            _make_task(id="b", cost_usd=0.25),
+            _make_task(id="a", input_tokens=10000, output_tokens=500),
+            _make_task(id="b", input_tokens=20000, output_tokens=1500),
         ]
         result = format_cost_summary(tasks)
-        assert "$0.3500" in result
+        assert "30.0k" in result  # total input
+        assert "2.0k" in result   # total output
 
     def test_header_and_separator(self) -> None:
         result = format_cost_summary([_make_task()])
-        assert "Cost" in result
+        assert "In tokens" in result
         assert "Duration" in result
         assert "TOTAL" in result
 
@@ -292,12 +294,12 @@ class TestLiveDisplayEventUpdatesState:
         display("task_launched", "task-a", "")
         assert display._tasks["task-a"]["status"] == "running"
 
-    def test_completed_sets_completed_with_cost(self, tmp_path: Path) -> None:
+    def test_completed_sets_completed_with_tokens(self, tmp_path: Path) -> None:
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        display("task_completed", "task-a", "$0.05")
+        display("task_completed", "task-a", "50.0k in / 3.2k out / 25 turns")
         assert display._tasks["task-a"]["status"] == "completed"
-        assert display._tasks["task-a"]["cost_usd"] == "$0.05"
+        assert display._tasks["task-a"]["token_summary"] == "50.0k in / 3.2k out / 25 turns"
 
     def test_failed_sets_failed_with_error(self, tmp_path: Path) -> None:
         store = _mock_store([_make_task(id="task-a", status="running")])
@@ -338,7 +340,7 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action, ts = display._read_last_action("task-a")
+        action, ts, _tokens = display._read_last_action("task-a")
         assert "Write foo.ts" in action
 
     def test_read_last_action_text_fallback(self, tmp_path: Path) -> None:
@@ -357,13 +359,13 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action, ts = display._read_last_action("task-a")
+        action, ts, _tokens = display._read_last_action("task-a")
         assert "Analyzing the codebase" in action
 
     def test_read_last_action_no_log(self, tmp_path: Path) -> None:
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action, ts = display._read_last_action("task-a")
+        action, ts, _tokens = display._read_last_action("task-a")
         assert action == "starting..."
         assert ts == ""
 
@@ -374,7 +376,7 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action, ts = display._read_last_action("task-a")
+        action, ts, _tokens = display._read_last_action("task-a")
         assert action == "working..."
         assert ts == ""
 
@@ -390,7 +392,7 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action, ts = display._read_last_action("task-a")
+        action, ts, _tokens = display._read_last_action("task-a")
         assert "Simple string content" in action
 
     def test_read_last_action_with_timestamp(self, tmp_path: Path) -> None:
@@ -411,7 +413,7 @@ class TestLiveDisplayReadLastAction:
 
         store = _mock_store([_make_task(id="task-a", status="running")])
         display = LiveDisplay(store, tmp_path)
-        action, ts = display._read_last_action("task-a")
+        action, ts, _tokens = display._read_last_action("task-a")
         assert "Bash" in action
         assert "s ago" in ts
 

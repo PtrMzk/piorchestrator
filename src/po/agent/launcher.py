@@ -97,6 +97,9 @@ class ClaudeCodeRunner:
         cost_usd: float | None = None
         result_text: str | None = None
         session_id: str | None = None
+        input_tokens: int | None = None
+        output_tokens: int | None = None
+        num_turns: int | None = None
         stderr_chunks: list[bytes] = []
 
         async def _drain_stderr() -> None:
@@ -129,8 +132,17 @@ class ClaudeCodeRunner:
                     # Parse for result metadata
                     if msg.get("type") == "result":
                         result_text = msg.get("result", "")
-                        cost_usd = msg.get("cost_usd")
+                        cost_usd = msg.get("total_cost_usd") or msg.get("cost_usd")
                         session_id = msg.get("session_id")
+                        num_turns = msg.get("num_turns")
+                        # Token usage from the aggregate usage block
+                        usage = msg.get("usage", {})
+                        input_tokens = (
+                            usage.get("input_tokens", 0)
+                            + usage.get("cache_read_input_tokens", 0)
+                            + usage.get("cache_creation_input_tokens", 0)
+                        ) or None
+                        output_tokens = usage.get("output_tokens") or None
 
             await stderr_task
             await proc.wait()
@@ -198,4 +210,7 @@ class ClaudeCodeRunner:
             error_message=error_message,
             subtasks=subtasks,
             session_id=session_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            num_turns=num_turns,
         )

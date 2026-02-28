@@ -389,14 +389,19 @@ class TestCmdCost:
 
     def test_shows_cost(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         project_root, conn, store = _setup_planned_project(tmp_path)
-        store.set_completed("task-a", cost_usd=0.15)
+        store.set_completed(
+            "task-a", cost_usd=0.15,
+            input_tokens=50000, output_tokens=3000, num_turns=10,
+        )
         conn.close()
 
         args = _make_namespace(project_root=project_root)
         cmd_cost(args)
 
         captured = capsys.readouterr()
-        assert "0.15" in captured.out
+        assert "50.0k" in captured.out
+        assert "3.0k" in captured.out
+        assert "10" in captured.out
 
 
 # ──────────────── cmd_logs tests ────────────────

@@ -65,30 +65,57 @@ def format_execution_plan(layers: list[list[str]], tasks: list[dict[str, Any]]) 
 
 
 def format_cost_summary(tasks: list[dict[str, Any]]) -> str:
-    """Format a cost summary."""
+    """Format a cost/token summary."""
     lines: list[str] = []
-    lines.append(f"{'ID':<25} {'Status':<12} {'Cost ($)':<10} {'Duration':<12}")
-    lines.append("─" * 59)
+    lines.append(
+        f"{'ID':<25} {'Status':<12} {'In tokens':<12} "
+        f"{'Out tokens':<12} {'Turns':<8} {'Duration':<12}"
+    )
+    lines.append("─" * 81)
 
-    total_cost = 0.0
+    total_in = 0
+    total_out = 0
     for task in tasks:
         task_id = str(task["id"])
         status = str(task["status"])
-        cost = task["cost_usd"]
-        cost_str = f"${cost:.4f}" if cost is not None else "—"
-        duration = task["duration_ms"]
+        in_tok = task.get("input_tokens")
+        out_tok = task.get("output_tokens")
+        turns = task.get("num_turns")
+        in_str = _fmt_tokens(in_tok) if in_tok is not None else "—"
+        out_str = _fmt_tokens(out_tok) if out_tok is not None else "—"
+        turns_str = str(turns) if turns is not None else "—"
+        duration = task.get("duration_ms")
         if duration is not None:
             secs = int(duration) / 1000
             dur_str = f"{secs:.1f}s"
         else:
             dur_str = "—"
-        lines.append(f"{task_id:<25} {status:<12} {cost_str:<10} {dur_str}")
-        if cost is not None:
-            total_cost += float(cost)
+        lines.append(
+            f"{task_id:<25} {status:<12} {in_str:<12} "
+            f"{out_str:<12} {turns_str:<8} {dur_str}"
+        )
+        if in_tok is not None:
+            total_in += int(in_tok)
+        if out_tok is not None:
+            total_out += int(out_tok)
 
-    lines.append("─" * 59)
-    lines.append(f"{'TOTAL':<37} ${total_cost:.4f}")
+    lines.append("─" * 81)
+    lines.append(
+        f"{'TOTAL':<37} {_fmt_tokens(total_in):<12} "
+        f"{_fmt_tokens(total_out)}"
+    )
     return "\n".join(lines)
+
+
+def _fmt_tokens(n: int | None) -> str:
+    """Format token count compactly."""
+    if n is None:
+        return "—"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}k"
+    return str(n)
 
 
 def format_progress_summary(tasks: list[dict[str, Any]]) -> str:

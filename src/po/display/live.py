@@ -83,7 +83,7 @@ class LiveDisplay:
         elif event == "task_completed":
             task_state["status"] = "completed"
             if detail:
-                task_state["cost_usd"] = detail
+                task_state["token_summary"] = detail
         elif event == "task_failed":
             task_state["status"] = "failed"
             if detail:
@@ -192,14 +192,20 @@ class LiveDisplay:
 
         # Extra info based on status
         if status == "running":
-            action, ts = self._read_last_action(task_id)
+            action, ts, tokens = self._read_last_action(task_id)
             label.append(f"  {action}", style="dim")
+            if tokens:
+                label.append(f"  [{tokens}]", style="dim yellow")
             if ts:
                 label.append(f"  ({ts})", style="dim italic")
         elif status == "completed":
-            cost = task.get("cost_usd")
-            if cost is not None:
-                label.append(f"  ${cost}", style="dim green")
+            token_summary = task.get("token_summary")
+            if token_summary:
+                label.append(f"  {token_summary}", style="dim green")
+            else:
+                cost = task.get("cost_usd")
+                if cost is not None:
+                    label.append(f"  ${float(cost):.4f}", style="dim green")
         elif status == "failed":
             error = task.get("error_message")
             if error:
@@ -208,14 +214,16 @@ class LiveDisplay:
 
         return parent.add(label)
 
-    def _read_last_action(self, task_id: str) -> tuple[str, str]:
-        """Read the last agent action from the task's JSONL log.
+    def _read_last_action(self, task_id: str) -> tuple[str, str, str]:
+        """Read the last agent action and token usage from the task's JSONL log.
 
-        Returns (action_text, relative_time) where relative_time is e.g. "5s ago".
+        Returns (action_text, relative_time, token_info) where:
+        - relative_time is e.g. "5s ago"
+        - token_info is e.g. "1.2k out" (output tokens so far)
         """
         log_file = self._log_dir / f"{task_id}.jsonl"
         if not log_file.exists():
-            return "starting...", ""
+            return "starting...", "", ""
 
         try:
             # Read last 32KB of the file (tool_result blocks can be large)
@@ -226,10 +234,15 @@ class LiveDisplay:
                     f.seek(size - read_size)
                 chunk = f.read().decode("utf-8", errors="replace")
         except OSError:
-            return "starting...", ""
+            return "starting...", "", ""
 
         # Parse lines backwards looking for the most recent assistant message
+        # and accumulate token usage from the chunk
         lines = chunk.strip().splitlines()
+        total_output_tokens = 0
+        action: str | None = None
+        action_ts = ""
+
         for line in reversed(lines):
             line = line.strip()
             if not line:
@@ -239,25 +252,37 @@ class LiveDisplay:
             except json.JSONDecodeError:
                 continue
 
-            if msg.get("type") != "assistant":
-                continue
+            if msg.get("type") == "assistant":
+                # Accumulate output tokens from all assistant messages in chunk
+                usage = msg.get("message", {}).get("usage", {})
+                total_output_tokens += usage.get("output_tokens", 0)
 
-            ts = _format_relative_time(msg.get("timestamp"))
-            content = msg.get("message", {}).get("content")
-            if isinstance(content, list):
-                # Look for tool_use blocks first (reverse order)
-                for block in reversed(content):
-                    if isinstance(block, dict) and block.get("type") == "tool_use":
-                        return tool_summary(block), ts
-                # Fallback to last text block
-                for block in reversed(content):
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text = block.get("text", "")
-                        return (text[:60] if text else "..."), ts
-            elif isinstance(content, str) and content:
-                return content[:60], ts
+                # Only capture the action from the first (most recent) one
+                if action is None:
+                    action_ts = _format_relative_time(msg.get("timestamp"))
+                    content = msg.get("message", {}).get("content")
+                    if isinstance(content, list):
+                        for block in reversed(content):
+                            if isinstance(block, dict) and block.get("type") == "tool_use":
+                                action = tool_summary(block)
+                                break
+                        if action is None:
+                            for block in reversed(content):
+                                if isinstance(block, dict) and block.get("type") == "text":
+                                    text = block.get("text", "")
+                                    action = text[:60] if text else "..."
+                                    break
+                    elif isinstance(content, str) and content:
+                        action = content[:60]
 
-        return "working...", ""
+        token_info = ""
+        if total_output_tokens > 0:
+            if total_output_tokens >= 1000:
+                token_info = f"{total_output_tokens / 1000:.1f}k out"
+            else:
+                token_info = f"{total_output_tokens} out"
+
+        return action or "working...", action_ts, token_info
 
 
 def _format_relative_time(timestamp: str | None) -> str:
