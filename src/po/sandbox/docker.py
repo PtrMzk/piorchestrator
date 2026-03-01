@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.resources
 import logging
+import re
 import shutil
 import socket
 import subprocess
@@ -43,6 +44,11 @@ def _resolve_hosts(hostnames: list[str]) -> dict[str, list[str]]:
         ips = list(dict.fromkeys(r[4][0] for r in infos))
         if not ips:
             raise SandboxError(f"DNS returned no addresses for {hostname}")
+        # Validate each IP to prevent injection via malicious DNS
+        ip_re = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
+        for ip in ips:
+            if not ip_re.match(ip):
+                raise SandboxError(f"Invalid IP from DNS for {hostname}: {ip}")
         result[hostname] = ips
     return result
 
@@ -225,6 +231,7 @@ class DockerSandbox:
         # Network isolation capabilities
         docker_cmd.extend([
             "--cap-add=NET_ADMIN",
+            "--cap-add=NET_RAW",
             "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
             "--hostname", "po-agent",
         ])

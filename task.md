@@ -276,3 +276,16 @@ Removed all `.claude-host` staging logic from `docker.py` and `entrypoint.sh`. R
 
 **Files:** `src/po/sandbox/docker.py`, `src/po/sandbox/entrypoint.sh`, `src/po/cli.py`,
 `src/po/config.py`, `tests/test_sandbox.py`
+
+### ~~43. Harden Docker sandbox firewall~~ — DONE
+Applied lessons from Claude Code's official devcontainer. Entrypoint now uses `set -euo pipefail`,
+fails hard if no allowed IPs found (prevents running without isolation), validates each IP from
+`/etc/hosts` against a regex, sets iptables default policy to DROP (not trailing REJECT),
+adds `ip6tables -P DROP` on all chains as belt-and-suspenders alongside sysctl disable, and
+verifies the firewall by testing that `example.com` is blocked and `api.anthropic.com` is
+reachable before starting the agent. Dockerfile adds `curl` (for verification) and `ip6tables`.
+`docker.py` adds `--cap-add=NET_RAW` (needed for curl in entrypoint) and validates DNS-resolved
+IPs against a regex before passing them to `--add-host`. 377 tests passing.
+
+**Files:** `src/po/sandbox/entrypoint.sh`, `src/po/sandbox/Dockerfile`,
+`src/po/sandbox/docker.py`, `tests/test_sandbox.py`

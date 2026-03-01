@@ -238,8 +238,9 @@ class TestDockerSandbox:
         assert "api.anthropic.com:5.6.7.8" in add_host_args
         assert "pypi.org:10.0.0.1" in add_host_args
 
-        # NET_ADMIN capability
+        # NET_ADMIN and NET_RAW capabilities
         assert "--cap-add=NET_ADMIN" in new_cmd
+        assert "--cap-add=NET_RAW" in new_cmd
 
         # IPv6 disabled
         sysctl_idx = new_cmd.index("--sysctl")

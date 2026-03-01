@@ -1,7 +1,7 @@
 FROM node:22-alpine
 
 RUN apk add --no-cache \
-    git bash iptables su-exec \
+    git bash iptables ip6tables su-exec curl \
     ripgrep libgcc libstdc++ \
     python3 py3-pip
 
