@@ -259,13 +259,20 @@ init prompts telling Claude to wire docs into `global_context_files` and per-tas
 **Files:** `src/po/scan/__init__.py` (new), `src/po/scan/scanner.py` (new), `src/po/cli.py`, `src/po/init/generator.py`, `tests/test_scan.py` (new), `tests/test_init.py`
 
 ### ~~41. Replace Docker sandbox with macOS sandbox-exec~~ — DONE
-Docker sandbox had unfixable auth issues (OAuth tokens in macOS Keychain can't be forwarded
-to containers). Replaced with `SeatbeltSandbox` using macOS's `sandbox-exec`. The seatbelt
-profile denies everything by default, then allows: file reads everywhere, file writes only
-to project root + temp dirs + home caches, network only HTTPS (443) + DNS (53) + localhost.
-Agents inherit the host shell environment so OAuth just works. Zero container overhead,
-instant task startup. Docker implementation kept as fallback. 16 new tests for seatbelt
-profile generation, command wrapping, env passthrough, and availability checks.
+Added `SeatbeltSandbox` using macOS's `sandbox-exec` as an alternative sandbox provider.
+Kept as a lighter option for when Docker isn't available. 16 new seatbelt tests.
 
 **Files:** `src/po/sandbox/seatbelt.py` (new), `src/po/sandbox/__init__.py`,
 `src/po/cli.py`, `tests/test_sandbox.py`
+
+### ~~42. Fix Docker sandbox auth with named volume + one-time login~~ — DONE
+Replaced host-mount auth approach (which couldn't access macOS Keychain OAuth tokens) with
+a named Docker volume (`po-claude-auth`). On first `po run`, if the volume has no credentials,
+launches an interactive `docker run -it` container for `claude /login`. The user completes
+the OAuth flow once; credentials persist in the volume across all subsequent container runs.
+Removed all `.claude-host` staging logic from `docker.py` and `entrypoint.sh`. Removed
+`--tmpfs /home/agent` (conflicted with volume mount). Docker sandbox restored as default.
+6 new auth volume tests, 377 total tests passing.
+
+**Files:** `src/po/sandbox/docker.py`, `src/po/sandbox/entrypoint.sh`, `src/po/cli.py`,
+`src/po/config.py`, `tests/test_sandbox.py`

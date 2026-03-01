@@ -138,7 +138,7 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | **Database** | `db/queries.py` | Task state machine (pending→running→completed/failed/cancelled/decomposed) |
 | **Orchestrator** | `orchestrator/loop.py` | Async coordination loop, concurrency, output-file overlap filtering, retries, deadlock detection |
 | **Agent** | `agent/launcher.py`, `agent/prompt_builder.py` | Claude CLI subprocess management, prompt construction, cost/session parsing |
-| **Sandbox** | `sandbox/provider.py`, `sandbox/seatbelt.py`, `sandbox/docker.py` | macOS sandbox-exec isolation (default) with file/network restrictions; Docker fallback available |
+| **Sandbox** | `sandbox/provider.py`, `sandbox/docker.py`, `sandbox/seatbelt.py` | Docker isolation (default) with domain-level network firewall; macOS sandbox-exec also available |
 | **Merge** | `orchestrator/merge.py` | Rebase + fast-forward merge; spawns a "merge agent" Claude to resolve conflicts |
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
 | **Scan** | `scan/scanner.py` | Codebase documentation generation via Claude CLI |
@@ -162,8 +162,8 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | `agent/launcher.py` | Claude CLI invocation |
 | `agent/prompt_builder.py` | Prompt construction |
 | `sandbox/provider.py` | `SandboxProvider` protocol, `NoSandbox` passthrough |
-| `sandbox/seatbelt.py` | `SeatbeltSandbox` — macOS sandbox-exec with file-write and network restrictions (default) |
-| `sandbox/docker.py` | `DockerSandbox` — Docker container wrapping with network isolation (legacy) |
+| `sandbox/docker.py` | `DockerSandbox` — Docker container wrapping with domain-level network firewall (default) |
+| `sandbox/seatbelt.py` | `SeatbeltSandbox` — macOS sandbox-exec with file-write and network restrictions (alternative) |
 | `worktree/manager.py` | Git worktree lifecycle |
 | `graph/resolver.py` | Dependency resolution and planning |
 | `display/status.py` | Text-based status output |
@@ -209,4 +209,4 @@ verification, priority, model, max_budget_usd, tags[]
 - **SQLite WAL mode**: enables safe concurrent read/write access to the task database
 - **Event callback system**: decouples orchestration from display (can emit events to different handlers)
 - **Namespace subtask IDs**: `{parent_id}/{subtask_id}` prevents ID collisions between parent and child tasks
-- **macOS sandbox-exec (default)**: Agents run inside macOS's `sandbox-exec` (seatbelt) sandbox by default. The sandbox profile denies all operations by default, then selectively allows: file reads everywhere (agents need system binaries, Python, node); file writes only to the project root (covering worktrees and `.git/`), temp directories, and home directory caches (`~/.claude`, `~/.npm`, `~/.cache`); network only to HTTPS (port 443) and DNS (port 53), plus localhost. Agents inherit the host shell environment, so OAuth tokens from the macOS Keychain work without any special handling — eliminating the Docker auth problem. Zero container overhead, instant task startup. `sandbox-exec` is deprecated by Apple but functional on current macOS. Docker-based isolation (`DockerSandbox`) is still available as a fallback. Disable with `--no-sandbox`. The `SandboxProvider` protocol allows swapping isolation backends without changing the orchestration logic
+- **Docker sandbox (default)**: Agents run inside Docker containers by default. Project root is mounted at the same absolute path (preserving worktree references). Network is firewalled via iptables to allow HTTPS only to `api.anthropic.com` and package registries (`pypi.org`, `files.pythonhosted.org`, `registry.npmjs.org`); DNS (port 53) is allowed so package managers can resolve CDN hostnames; all other outbound traffic is rejected. Auth credentials are stored in a named Docker volume (`po-claude-auth`); on first use, the user is prompted to log in interactively inside a one-off container, and the volume persists across all subsequent runs. The container includes Python 3 + uv and ripgrep for agent use. macOS sandbox-exec (`SeatbeltSandbox`) is also available as a lighter alternative. Disable with `--no-sandbox`. The `SandboxProvider` protocol allows swapping isolation backends without changing the orchestration logic

@@ -128,7 +128,7 @@ def main() -> None:
     )
     run_parser.add_argument(
         "--sandbox", action=argparse.BooleanOptionalAction, default=True,
-        help="Run agents inside macOS sandbox-exec with file/network isolation (default: on)",
+        help="Run agents inside Docker containers with network/file isolation (default: on)",
     )
 
     # po status
@@ -399,8 +399,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     # Construct sandbox provider (default: on, use --no-sandbox to disable)
     sandbox = None
     if getattr(args, "sandbox", True):
-        from po.sandbox import SeatbeltSandbox
-        sandbox = SeatbeltSandbox()
+        from po.sandbox import DockerSandbox
+        sandbox = DockerSandbox()
 
     # Choose display mode based on TTY
     live_display = None

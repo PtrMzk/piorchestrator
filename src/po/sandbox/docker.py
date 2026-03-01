@@ -1,16 +1,26 @@
-"""Docker-based sandbox for running agents in containers."""
+"""Docker-based sandbox for running agents in containers.
+
+Auth is stored in a named Docker volume (po-claude-auth). On first run,
+the user is prompted to log in interactively inside a one-off container.
+Subsequent runs reuse the volume automatically.
+"""
 
 from __future__ import annotations
 
 import importlib.resources
 import logging
-import os
 import shutil
 import socket
 import subprocess
+import sys
 from pathlib import Path
 
-from po.config import SANDBOX_API_HOST, SANDBOX_IMAGE_NAME, SANDBOX_REGISTRY_HOSTS
+from po.config import (
+    SANDBOX_API_HOST,
+    SANDBOX_AUTH_VOLUME,
+    SANDBOX_IMAGE_NAME,
+    SANDBOX_REGISTRY_HOSTS,
+)
 from po.sandbox.provider import SandboxError
 
 logger = logging.getLogger(__name__)
@@ -89,6 +99,56 @@ def _build_image(image_name: str = SANDBOX_IMAGE_NAME) -> None:
         logger.info("Sandbox image %s built successfully", image_name)
 
 
+def _volume_has_auth(
+    volume_name: str = SANDBOX_AUTH_VOLUME,
+    image_name: str = SANDBOX_IMAGE_NAME,
+) -> bool:
+    """Check if the auth volume contains Claude credentials."""
+    result = subprocess.run(
+        [
+            "docker", "run", "--rm",
+            "-v", f"{volume_name}:/home/agent/.claude",
+            image_name,
+            "sh", "-c",
+            "test -f /home/agent/.claude/credentials.json"
+            " || test -f /home/agent/.claude/.credentials.json"
+            ' || grep -q oauthAccount /home/agent/.claude.json 2>/dev/null',
+        ],
+        capture_output=True, timeout=15,
+    )
+    return result.returncode == 0
+
+
+def _run_interactive_login(
+    volume_name: str = SANDBOX_AUTH_VOLUME,
+    image_name: str = SANDBOX_IMAGE_NAME,
+) -> None:
+    """Run an interactive container for the user to log in to Claude."""
+    print(
+        "\n  Sandbox auth not configured. Launching interactive login...\n"
+        "  A browser window will open. Complete the login, then the\n"
+        "  container will exit and credentials will be saved.\n"
+    )
+
+    # Need a TTY for the OAuth flow — run interactively
+    result = subprocess.run(
+        [
+            "docker", "run", "--rm", "-it",
+            "-v", f"{volume_name}:/home/agent/.claude",
+            "-e", "HOME=/home/agent",
+            image_name,
+            "claude", "/login",
+        ],
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+    if result.returncode != 0:
+        raise SandboxError(
+            "Login failed. Run 'po run' again to retry."
+        )
+
+
 class DockerSandbox:
     """Run agent commands inside a Docker container.
 
@@ -99,19 +159,39 @@ class DockerSandbox:
     DNS is allowed so package managers can resolve CDN hostnames.
     API and registry IPs are injected via --add-host and the entrypoint
     configures iptables to reject everything else.
+
+    Auth: stored in a named Docker volume (po-claude-auth). On first use,
+    the user is prompted to log in interactively. The volume persists
+    across all container runs.
     """
 
-    def __init__(self, image_name: str = SANDBOX_IMAGE_NAME) -> None:
+    def __init__(
+        self,
+        image_name: str = SANDBOX_IMAGE_NAME,
+        auth_volume: str = SANDBOX_AUTH_VOLUME,
+    ) -> None:
         self._image_name = image_name
+        self._auth_volume = auth_volume
         self._host_ips: dict[str, list[str]] = {}
 
     async def prepare(self) -> None:
-        """Check Docker, resolve host IPs, build the image."""
+        """Check Docker, resolve host IPs, build the image, ensure auth."""
         _check_docker()
         all_hosts = [SANDBOX_API_HOST] + SANDBOX_REGISTRY_HOSTS
         self._host_ips = _resolve_hosts(all_hosts)
         logger.debug("Resolved hosts: %s", self._host_ips)
         _build_image(self._image_name)
+
+        # Ensure the auth volume exists and has credentials
+        if not _volume_has_auth(self._auth_volume, self._image_name):
+            _run_interactive_login(self._auth_volume, self._image_name)
+            # Verify login succeeded
+            if not _volume_has_auth(self._auth_volume, self._image_name):
+                raise SandboxError(
+                    "Login completed but no credentials found in the volume.\n"
+                    "Try again or use --no-sandbox."
+                )
+            logger.info("Auth volume %s is ready", self._auth_volume)
 
     def wrap_command(
         self,
@@ -122,36 +202,20 @@ class DockerSandbox:
         env: dict[str, str],
     ) -> tuple[list[str], dict[str, str]]:
         """Wrap a command to run inside the sandbox container."""
-        # Locate host's Claude config for auth credentials
-        host_claude_dir = Path(
-            os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")
-        )
-        host_claude_json = Path.home() / ".claude.json"
-
         docker_cmd = [
             "docker", "run", "--rm", "-i",
             # Mount project at the same absolute path
             "-v", f"{project_root}:{project_root}",
+            # Mount auth volume — persisted credentials from one-time login
+            "-v", f"{self._auth_volume}:/home/agent/.claude",
             # Tmpfs for scratch space
             "--tmpfs", "/tmp:size=1G",
-            "--tmpfs", "/home/agent",
             # Working directory
             "-w", str(worktree_path),
             # Environment
             "-e", f"ANTHROPIC_API_KEY={env.get('ANTHROPIC_API_KEY', '')}",
             "-e", "HOME=/home/agent",
         ]
-
-        # Mount host's Claude config to staging paths (read-only).
-        # The entrypoint copies auth credentials to the writable home dir.
-        if host_claude_dir.is_dir():
-            docker_cmd.extend([
-                "-v", f"{host_claude_dir}:/home/agent/.claude-host:ro",
-            ])
-        if host_claude_json.is_file():
-            docker_cmd.extend([
-                "-v", f"{host_claude_json}:/home/agent/.claude.json-host:ro",
-            ])
 
         # Inject all resolved host IPs via --add-host
         for hostname, ips in self._host_ips.items():
@@ -169,8 +233,4 @@ class DockerSandbox:
         docker_cmd.append(self._image_name)
         docker_cmd.extend(cmd)
 
-        # The container manages its own env; host env is not passed through
-        # except ANTHROPIC_API_KEY which is handled via -e above.
-        # Return empty env so create_subprocess_exec uses the host env
-        # (Docker handles isolation).
         return docker_cmd, env

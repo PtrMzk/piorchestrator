@@ -9,7 +9,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from po.sandbox.docker import DockerSandbox, _build_image, _check_docker, _resolve_hosts
+from po.sandbox.docker import (
+    DockerSandbox,
+    _build_image,
+    _check_docker,
+    _resolve_hosts,
+    _run_interactive_login,
+    _volume_has_auth,
+)
 from po.sandbox.provider import NoSandbox, SandboxError
 from po.sandbox.seatbelt import SeatbeltSandbox, _build_profile, _check_sandbox_exec
 
@@ -144,9 +151,52 @@ class TestBuildImage:
                 _build_image("test-image:latest")
 
 
+class TestVolumeAuth:
+    def test_volume_has_auth_returns_true(self) -> None:
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        with patch("po.sandbox.docker.subprocess.run", return_value=mock_result):
+            assert _volume_has_auth("test-vol", "test:v1") is True
+
+    def test_volume_has_auth_returns_false(self) -> None:
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        with patch("po.sandbox.docker.subprocess.run", return_value=mock_result):
+            assert _volume_has_auth("test-vol", "test:v1") is False
+
+    def test_volume_has_auth_checks_credentials(self) -> None:
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        with patch("po.sandbox.docker.subprocess.run", return_value=mock_result) as mock_run:
+            _volume_has_auth("my-vol", "my-image:latest")
+        # Should mount the named volume and check for credential files
+        cmd = mock_run.call_args[0][0]
+        assert "my-vol:/home/agent/.claude" in " ".join(cmd)
+        assert "credentials.json" in " ".join(cmd)
+
+    def test_interactive_login_raises_on_failure(self) -> None:
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        with (
+            patch("po.sandbox.docker.subprocess.run", return_value=mock_result),
+            pytest.raises(SandboxError, match="Login failed"),
+        ):
+            _run_interactive_login("test-vol", "test:v1")
+
+    def test_interactive_login_runs_docker_it(self) -> None:
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        with patch("po.sandbox.docker.subprocess.run", return_value=mock_result) as mock_run:
+            _run_interactive_login("my-vol", "my-image:latest")
+        cmd = mock_run.call_args[0][0]
+        assert "-it" in cmd
+        assert "my-vol:/home/agent/.claude" in " ".join(cmd)
+        assert cmd[-1] == "/login"
+
+
 class TestDockerSandbox:
     def test_wrap_command_structure(self, tmp_path: Path) -> None:
-        sandbox = DockerSandbox(image_name="test-image:latest")
+        sandbox = DockerSandbox(image_name="test-image:latest", auth_volume="test-vol")
         sandbox._host_ips = {
             "api.anthropic.com": ["1.2.3.4", "5.6.7.8"],
             "pypi.org": ["10.0.0.1"],
@@ -169,16 +219,16 @@ class TestDockerSandbox:
         assert "--rm" in new_cmd
         assert "-i" in new_cmd
 
-        # Volume mount preserves absolute path
-        vol_idx = new_cmd.index("-v")
-        assert new_cmd[vol_idx + 1] == f"{project}:{project}"
+        # Volume mounts: project root + auth volume
+        vol_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-v"]
+        assert f"{project}:{project}" in vol_args
+        assert "test-vol:/home/agent/.claude" in vol_args
 
         # Working directory
         w_idx = new_cmd.index("-w")
         assert new_cmd[w_idx + 1] == str(worktree)
 
         # API key is passed via -e
-        assert "-e" in new_cmd
         env_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-e"]
         assert any("ANTHROPIC_API_KEY=sk-test-123" in e for e in env_args)
 
@@ -215,8 +265,8 @@ class TestDockerSandbox:
         assert any("ANTHROPIC_API_KEY=" in e for e in env_args)
 
     @pytest.mark.asyncio
-    async def test_prepare_calls_check_resolve_build(self) -> None:
-        sandbox = DockerSandbox(image_name="test:v1")
+    async def test_prepare_calls_check_resolve_build_and_auth(self) -> None:
+        sandbox = DockerSandbox(image_name="test:v1", auth_volume="test-vol")
 
         with (
             patch("po.sandbox.docker._check_docker") as mock_check,
@@ -227,14 +277,54 @@ class TestDockerSandbox:
                 "registry.npmjs.org": ["10.0.0.4"],
             }) as mock_dns,
             patch("po.sandbox.docker._build_image") as mock_build,
+            patch("po.sandbox.docker._volume_has_auth", return_value=True) as mock_auth,
         ):
             await sandbox.prepare()
 
         mock_check.assert_called_once()
         mock_dns.assert_called_once()
         mock_build.assert_called_once_with("test:v1")
-        assert "api.anthropic.com" in sandbox._host_ips
+        mock_auth.assert_called_once_with("test-vol", "test:v1")
         assert sandbox._host_ips["api.anthropic.com"] == ["10.0.0.1"]
+
+    @pytest.mark.asyncio
+    async def test_prepare_triggers_login_when_no_auth(self) -> None:
+        sandbox = DockerSandbox(image_name="test:v1", auth_volume="test-vol")
+
+        with (
+            patch("po.sandbox.docker._check_docker"),
+            patch("po.sandbox.docker._resolve_hosts", return_value={
+                "api.anthropic.com": ["10.0.0.1"],
+            }),
+            patch("po.sandbox.docker._build_image"),
+            patch(
+                "po.sandbox.docker._volume_has_auth",
+                side_effect=[False, True],  # No auth → login → auth found
+            ),
+            patch("po.sandbox.docker._run_interactive_login") as mock_login,
+        ):
+            await sandbox.prepare()
+
+        mock_login.assert_called_once_with("test-vol", "test:v1")
+
+    @pytest.mark.asyncio
+    async def test_prepare_raises_when_login_fails(self) -> None:
+        sandbox = DockerSandbox(image_name="test:v1", auth_volume="test-vol")
+
+        with (
+            patch("po.sandbox.docker._check_docker"),
+            patch("po.sandbox.docker._resolve_hosts", return_value={
+                "api.anthropic.com": ["10.0.0.1"],
+            }),
+            patch("po.sandbox.docker._build_image"),
+            patch(
+                "po.sandbox.docker._volume_has_auth",
+                return_value=False,  # Still no auth after login
+            ),
+            patch("po.sandbox.docker._run_interactive_login"),
+            pytest.raises(SandboxError, match="no credentials found"),
+        ):
+            await sandbox.prepare()
 
     def test_tmpfs_mounts(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()
@@ -246,7 +336,6 @@ class TestDockerSandbox:
 
         tmpfs_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "--tmpfs"]
         assert "/tmp:size=1G" in tmpfs_args
-        assert "/home/agent" in tmpfs_args
 
     def test_hostname_set(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()
@@ -259,40 +348,16 @@ class TestDockerSandbox:
         hostname_idx = new_cmd.index("--hostname")
         assert new_cmd[hostname_idx + 1] == "po-agent"
 
-    def test_wrap_command_mounts_claude_config(self, tmp_path: Path) -> None:
-        sandbox = DockerSandbox()
+    def test_wrap_command_mounts_auth_volume(self, tmp_path: Path) -> None:
+        sandbox = DockerSandbox(auth_volume="my-auth-vol")
         sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
 
-        # Create a fake .claude dir to simulate host config
-        fake_claude_dir = tmp_path / "fakehome" / ".claude"
-        fake_claude_dir.mkdir(parents=True)
-
-        with patch("po.sandbox.docker.os.environ", {"CLAUDE_CONFIG_DIR": str(fake_claude_dir)}):
-            new_cmd, _ = sandbox.wrap_command(
-                ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
-            )
+        new_cmd, _ = sandbox.wrap_command(
+            ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
+        )
 
         vol_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-v"]
-        assert f"{fake_claude_dir}:/home/agent/.claude-host:ro" in vol_args
-
-    def test_wrap_command_skips_claude_config_when_missing(self, tmp_path: Path) -> None:
-        sandbox = DockerSandbox()
-        sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
-
-        fake_home = tmp_path / "emptyhome"
-        fake_home.mkdir()
-
-        with (
-            patch("po.sandbox.docker.os.environ", {"CLAUDE_CONFIG_DIR": "/nonexistent/.claude"}),
-            patch("po.sandbox.docker.Path.home", return_value=fake_home),
-        ):
-            new_cmd, _ = sandbox.wrap_command(
-                ["claude"], worktree_path=tmp_path, project_root=tmp_path, env={},
-            )
-
-        vol_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-v"]
-        # Only project root mount, no claude config mount
-        assert len(vol_args) == 1
+        assert "my-auth-vol:/home/agent/.claude" in vol_args
 
     def test_wrap_command_includes_registry_hosts(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()
