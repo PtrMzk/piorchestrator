@@ -257,3 +257,15 @@ init prompts telling Claude to wire docs into `global_context_files` and per-tas
 `context_files`. 16 new tests covering prompt building and codebase doc detection/integration.
 
 **Files:** `src/po/scan/__init__.py` (new), `src/po/scan/scanner.py` (new), `src/po/cli.py`, `src/po/init/generator.py`, `tests/test_scan.py` (new), `tests/test_init.py`
+
+### ~~41. Replace Docker sandbox with macOS sandbox-exec~~ — DONE
+Docker sandbox had unfixable auth issues (OAuth tokens in macOS Keychain can't be forwarded
+to containers). Replaced with `SeatbeltSandbox` using macOS's `sandbox-exec`. The seatbelt
+profile denies everything by default, then allows: file reads everywhere, file writes only
+to project root + temp dirs + home caches, network only HTTPS (443) + DNS (53) + localhost.
+Agents inherit the host shell environment so OAuth just works. Zero container overhead,
+instant task startup. Docker implementation kept as fallback. 16 new tests for seatbelt
+profile generation, command wrapping, env passthrough, and availability checks.
+
+**Files:** `src/po/sandbox/seatbelt.py` (new), `src/po/sandbox/__init__.py`,
+`src/po/cli.py`, `tests/test_sandbox.py`

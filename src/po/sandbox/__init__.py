@@ -2,5 +2,12 @@
 
 from po.sandbox.docker import DockerSandbox
 from po.sandbox.provider import NoSandbox, SandboxError, SandboxProvider
+from po.sandbox.seatbelt import SeatbeltSandbox
 
-__all__ = ["DockerSandbox", "NoSandbox", "SandboxError", "SandboxProvider"]
+__all__ = [
+    "DockerSandbox",
+    "NoSandbox",
+    "SandboxError",
+    "SandboxProvider",
+    "SeatbeltSandbox",
+]
