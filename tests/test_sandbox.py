@@ -320,7 +320,7 @@ class TestDockerSandbox:
         )
 
         tmpfs_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "--tmpfs"]
-        assert "/tmp:size=1G" in tmpfs_args
+        assert "/tmp:size=1G,noexec" in tmpfs_args
 
     def test_hostname_set(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox()

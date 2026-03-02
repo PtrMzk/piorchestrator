@@ -331,7 +331,6 @@ Added size limit constants: `MAX_TASKS=1000`, `MAX_DEPENDENCIES_PER_TASK=50`,
 `MAX_CONTEXT_FILES_PER_TASK=50`, `MAX_OUTPUT_FILES_PER_TASK=50`, `MAX_USER_STORIES=100`.
 Enforced in `TaskSpec.validate()` and `ProjectSpec.validate()`. 5 new tests.
 
-### 52. Add noexec to Docker tmpfs mount
-
-`docker.py` mounts `--tmpfs /tmp:size=1G` without `noexec`. Adding `noexec` prevents agents
-from compiling and executing arbitrary binaries from `/tmp` inside the container.
+### ~~52. Add noexec to Docker tmpfs mount~~ — DONE
+Changed tmpfs mount from `/tmp:size=1G` to `/tmp:size=1G,noexec`. Prevents agents from
+executing compiled binaries from `/tmp` inside the container.

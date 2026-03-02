@@ -215,7 +215,7 @@ class DockerSandbox:
             # Mount auth volume — persisted credentials from one-time login
             "-v", f"{self._auth_volume}:/home/agent/.claude",
             # Tmpfs for scratch space
-            "--tmpfs", "/tmp:size=1G",
+            "--tmpfs", "/tmp:size=1G,noexec",
             # Working directory
             "-w", str(worktree_path),
             # Environment (auth is handled via the named volume, not env vars)
