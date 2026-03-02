@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 
+def _escape_backticks(text: str) -> str:
+    """Escape triple-backtick sequences in text to prevent fence breakout."""
+    return text.replace("```", r"\`\`\`")
+
+
 def build_prompt(
     task_id: str,
     description: str,
@@ -24,7 +29,7 @@ def build_prompt(
             "This is a retry. A previous attempt already made progress but "
             "failed verification. The branch contains the previous work.\n\n"
             "**Error:**\n"
-            f"```\n{previous_error}\n```\n\n"
+            f"```\n{_escape_backticks(previous_error)}\n```\n\n"
             "**IMPORTANT — Retry rules:**\n"
             "1. You have limited turns. Do NOT investigate extensively — "
             "go straight to fixing the error.\n"
@@ -41,7 +46,7 @@ def build_prompt(
     if context_files_content:
         parts.append("\n## Reference Files")
         for filepath, content in context_files_content.items():
-            parts.append(f"\n### {filepath}\n```\n{content}\n```")
+            parts.append(f"\n### {filepath}\n```\n{_escape_backticks(content)}\n```")
 
     if output_files:
         parts.append(f"\n## Expected Output Files\n{', '.join(output_files)}")

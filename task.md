@@ -310,11 +310,9 @@ Replaced `shell=True` with `shlex.split()` in both `merge.py:_run_verification()
 `loop.py:_run_verification()`. Verification commands are now parsed safely without shell
 interpretation.
 
-### 47. Prevent prompt injection via context files
-
-`src/po/agent/prompt_builder.py` includes context file content verbatim inside triple-backtick
-fences. A file containing triple backticks can break out of the fence and inject rogue
-instructions. Escape or replace backtick sequences in context file content before embedding.
+### ~~47. Prevent prompt injection via context files~~ — DONE
+Added `_escape_backticks()` helper that escapes triple-backtick sequences in context file
+content and previous error messages before embedding in prompts. 3 new tests.
 
 ### 48. Restrict database and log file permissions
 
