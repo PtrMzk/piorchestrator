@@ -20,8 +20,8 @@ from po.config import (
     STATUS_DECOMPOSED,
     STATUS_PENDING,
     TERMINAL_STATUSES,
+    ensure_logs_dir,
     escalate_model,
-    logs_dir,
 )
 from po.db.queries import AgentResult, SqliteTaskStore
 from po.orchestrator.merge import MergeResult, MergeStrategy, RebaseMerger
@@ -516,8 +516,7 @@ class OrchestratorLoop:
             ),
         )
 
-        log_dir = logs_dir(self.project_root)
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = ensure_logs_dir(self.project_root)
         log_file = log_dir / f"preverify-{task_id}.log"
         with open(log_file, "w") as fh:
             fh.write(f"Command: {verification}\n")

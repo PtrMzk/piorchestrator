@@ -314,11 +314,9 @@ interpretation.
 Added `_escape_backticks()` helper that escapes triple-backtick sequences in context file
 content and previous error messages before embedding in prompts. 3 new tests.
 
-### 48. Restrict database and log file permissions
-
-`.po/state.db` and `.po/logs/` are created with default permissions, making them potentially
-readable by other users. Set `0o600` on the database file and `0o700` on the log directory
-after creation.
+### ~~48. Restrict database and log file permissions~~ — DONE
+`get_connection()` now sets `0o600` on the DB file after creation. Added `ensure_logs_dir()`
+helper in `config.py` that creates `.po/logs/` with `0o700`. All callers updated to use it.
 
 ### 49. Narrow git safe.directory in Docker entrypoint
 

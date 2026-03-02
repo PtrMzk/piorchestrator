@@ -12,7 +12,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.status import Status
 
-from po.config import logs_dir
+from po.config import ensure_logs_dir
 from po.display.tools import tool_summary
 
 logger = logging.getLogger(__name__)
@@ -69,8 +69,7 @@ def _invoke_scan_agent(
         "--permission-mode", "bypassPermissions",
     ]
 
-    log_dir = logs_dir(project_root)
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir = ensure_logs_dir(project_root)
     log_file = log_dir / "scan.jsonl"
 
     proc = subprocess.Popen(

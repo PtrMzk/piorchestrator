@@ -99,3 +99,14 @@ def worktrees_dir(project_root: Path) -> Path:
 def logs_dir(project_root: Path) -> Path:
     """Return the path to the logs directory."""
     return po_dir(project_root) / LOGS_DIR
+
+
+def ensure_logs_dir(project_root: Path) -> Path:
+    """Create the logs directory with restricted permissions (0o700).
+
+    Returns the log directory path.
+    """
+    log_dir = logs_dir(project_root)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.chmod(0o700)
+    return log_dir

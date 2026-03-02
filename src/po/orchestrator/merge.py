@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
-from po.config import logs_dir
+from po.config import ensure_logs_dir
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +134,7 @@ class RebaseMerger:
         )
 
         # Always write verification output to a log file
-        log_dir = logs_dir(project_root)
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = ensure_logs_dir(project_root)
         verify_log = log_dir / f"verify-{task_id}.log"
         with open(verify_log, "w") as fh:
             fh.write(f"Command: {verification}\n")
@@ -323,8 +322,7 @@ class RebaseMerger:
             "--permission-mode", "bypassPermissions",
         ]
 
-        log_dir = logs_dir(project_root)
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = ensure_logs_dir(project_root)
         log_file = log_dir / f"merge-{task_id}.jsonl"
 
         proc = subprocess.Popen(

@@ -12,7 +12,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.status import Status
 
-from po.config import logs_dir
+from po.config import ensure_logs_dir
 from po.display.tools import tool_summary
 from po.spec.schema import ProjectSpec
 
@@ -419,8 +419,7 @@ def _invoke_claude(
 
     log_file = None
     if project_root is not None:
-        log_dir = logs_dir(project_root)
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = ensure_logs_dir(project_root)
         log_file = log_dir / "init.jsonl"
 
     proc = subprocess.Popen(
