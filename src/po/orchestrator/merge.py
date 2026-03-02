@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -126,8 +127,7 @@ class RebaseMerger:
 
         logger.debug("Running verification for %s: %s", task_id, verification)
         verify_result = subprocess.run(
-            verification,
-            shell=True,
+            shlex.split(verification),
             cwd=project_root,
             capture_output=True,
             text=True,

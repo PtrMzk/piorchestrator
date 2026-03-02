@@ -305,12 +305,10 @@ Audited all source files. Removed 3 unused methods from `SqliteTaskStore`:
 `get_tasks_by_status()`, `get_total_cost()`, `get_status_counts()`. Removed
 corresponding dead tests. Updated e2e test to compute cost inline.
 
-### 46. Fix shell injection in verification command execution
-
-`_run_verification()` in `src/po/orchestrator/merge.py` uses `subprocess.run(verification,
-shell=True)`, which allows arbitrary shell injection if a spec file contains a malicious
-verification command. Switch to `shlex.split()` with `shell=False`, or validate the command
-against a safe pattern.
+### ~~46. Fix shell injection in verification command execution~~ — DONE
+Replaced `shell=True` with `shlex.split()` in both `merge.py:_run_verification()` and
+`loop.py:_run_verification()`. Verification commands are now parsed safely without shell
+interpretation.
 
 ### 47. Prevent prompt injection via context files
 

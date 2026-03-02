@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import shlex
 import signal
 import subprocess
 from collections.abc import Callable
@@ -508,8 +509,7 @@ class OrchestratorLoop:
         verify_result = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: subprocess.run(
-                verification,
-                shell=True,
+                shlex.split(verification),
                 cwd=worktree_path,
                 capture_output=True,
                 text=True,
