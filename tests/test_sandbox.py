@@ -227,9 +227,9 @@ class TestDockerSandbox:
         w_idx = new_cmd.index("-w")
         assert new_cmd[w_idx + 1] == str(worktree)
 
-        # API key is passed via -e
+        # API key is NOT passed (auth is via named volume)
         env_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-e"]
-        assert any("ANTHROPIC_API_KEY=sk-test-123" in e for e in env_args)
+        assert not any("ANTHROPIC_API_KEY" in e for e in env_args)
 
         # --add-host entries for all hosts
         add_host_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "--add-host"]
@@ -248,21 +248,6 @@ class TestDockerSandbox:
         # Image name before the actual command
         img_idx = new_cmd.index("test-image:latest")
         assert new_cmd[img_idx + 1:] == cmd
-
-    def test_wrap_command_with_no_api_key(self, tmp_path: Path) -> None:
-        sandbox = DockerSandbox()
-        sandbox._host_ips = {"api.anthropic.com": ["1.2.3.4"]}
-
-        new_cmd, _ = sandbox.wrap_command(
-            ["claude", "-p", "hi"],
-            worktree_path=tmp_path,
-            project_root=tmp_path,
-            env={"PATH": "/usr/bin"},
-        )
-
-        # Should still produce a valid command even without ANTHROPIC_API_KEY
-        env_args = [new_cmd[i + 1] for i, x in enumerate(new_cmd) if x == "-e"]
-        assert any("ANTHROPIC_API_KEY=" in e for e in env_args)
 
     @pytest.mark.asyncio
     async def test_prepare_calls_check_resolve_build_and_auth(self) -> None:

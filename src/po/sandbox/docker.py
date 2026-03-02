@@ -218,8 +218,7 @@ class DockerSandbox:
             "--tmpfs", "/tmp:size=1G",
             # Working directory
             "-w", str(worktree_path),
-            # Environment
-            "-e", f"ANTHROPIC_API_KEY={env.get('ANTHROPIC_API_KEY', '')}",
+            # Environment (auth is handled via the named volume, not env vars)
             "-e", "HOME=/home/agent",
             "-e", f"PO_PROJECT_ROOT={project_root}",
         ]

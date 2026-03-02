@@ -322,12 +322,9 @@ helper in `config.py` that creates `.po/logs/` with `0o700`. All callers updated
 `docker.py` now passes `PO_PROJECT_ROOT` env var to the container. `entrypoint.sh` scopes
 `safe.directory` to the project root and working directory instead of wildcard `*`.
 
-### 50. Remove redundant ANTHROPIC_API_KEY pass-through in Docker sandbox
-
-`docker.py` passes `ANTHROPIC_API_KEY` as an environment variable to the container, but auth is
-already handled via the named Docker volume with OAuth credentials. The env var is redundant and
-exposes the key via `docker inspect` / `/proc/*/environ`. Remove it unless it serves as a
-required fallback.
+### ~~50. Remove redundant ANTHROPIC_API_KEY pass-through in Docker sandbox~~ — DONE
+Removed `ANTHROPIC_API_KEY` env var from `docker.py` `wrap_command()`. Auth is handled
+via the named Docker volume with OAuth credentials. Updated tests accordingly.
 
 ### 51. Add spec size limits
 
