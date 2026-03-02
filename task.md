@@ -334,3 +334,11 @@ Enforced in `TaskSpec.validate()` and `ProjectSpec.validate()`. 5 new tests.
 ### ~~52. Add noexec to Docker tmpfs mount~~ — DONE
 Changed tmpfs mount from `/tmp:size=1G` to `/tmp:size=1G,noexec`. Prevents agents from
 executing compiled binaries from `/tmp` inside the container.
+
+### ~~53. Integration test with mock Claude binary~~ — DONE
+Created `tests/mock_claude.py` (mock Claude CLI binary) and `tests/test_integration.py`
+that exercise the full `po init` → `po run` pipeline through real subprocess invocations.
+Unlike E2E tests that replace the `AgentRunner` protocol, this test exercises the real
+`_invoke_claude()` (sync) and `ClaudeCodeRunner.run()` (async) subprocess-spawning code
+paths. The mock binary is injected onto `$PATH` and handles spec generation, task execution
+(file creation + git commits), and returns stream-json output.
