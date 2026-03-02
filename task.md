@@ -300,10 +300,10 @@ Deleted `src/po/sandbox/seatbelt.py`, removed `SeatbeltSandbox` export from
 `src/po/sandbox/__init__.py`, removed 16 seatbelt tests from `tests/test_sandbox.py`,
 and cleaned up all references in `ARCHITECTURE.md`.
 
-### 45. Remove unused/dead code across the codebase
-
-Audit all source files for dead imports, unreachable code paths, unused functions/classes, and
-stale references. Clean up anything that is no longer called or reachable.
+### ~~45. Remove unused/dead code across the codebase~~ — DONE
+Audited all source files. Removed 3 unused methods from `SqliteTaskStore`:
+`get_tasks_by_status()`, `get_total_cost()`, `get_status_counts()`. Removed
+corresponding dead tests. Updated e2e test to compute cost inline.
 
 ### 46. Fix shell injection in verification command execution
 

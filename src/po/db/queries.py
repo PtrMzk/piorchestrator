@@ -284,13 +284,6 @@ class SqliteTaskStore:
         ).fetchall()
         return [row["id"] for row in rows]
 
-    def get_tasks_by_status(self, status: str) -> list[dict[str, Any]]:
-        """Get all tasks with a given status."""
-        rows = self.conn.execute(
-            "SELECT * FROM tasks WHERE status = ? ORDER BY priority DESC, id", (status,)
-        ).fetchall()
-        return [dict(r) for r in rows]
-
     def reset_task(self, task_id: str) -> None:
         """Reset a failed/cancelled task to pending, cascading to dependents."""
         self._reset_single(task_id)
@@ -387,16 +380,3 @@ class SqliteTaskStore:
         )
         self.conn.commit()
 
-    def get_total_cost(self) -> float:
-        """Get total cost across all tasks."""
-        row = self.conn.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) as total FROM tasks"
-        ).fetchone()
-        return float(row["total"])
-
-    def get_status_counts(self) -> dict[str, int]:
-        """Get count of tasks per status."""
-        rows = self.conn.execute(
-            "SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status"
-        ).fetchall()
-        return {row["status"]: row["cnt"] for row in rows}

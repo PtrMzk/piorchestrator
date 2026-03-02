@@ -160,7 +160,8 @@ class TestE2E:
         assert remaining == [], f"Leftover worktrees: {remaining}"
 
         # Costs recorded
-        total_cost = store.get_total_cost()
+        all_tasks = store.get_all_tasks()
+        total_cost = sum(t["cost_usd"] or 0 for t in all_tasks)
         assert total_cost == pytest.approx(0.03, abs=0.001)
 
     async def test_diamond_dag_concurrent_execution(self, e2e_env: tuple) -> None:

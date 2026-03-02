@@ -144,22 +144,6 @@ class TestSqliteTaskStore:
         assert task["source"] == "runtime"
         assert task["parent_task_id"] == "task-a"
 
-    def test_get_total_cost(self, store: SqliteTaskStore, sample_spec: ProjectSpec) -> None:
-        store.save_spec(sample_spec)
-        store.set_running("task-a", "/tmp", "po/task-a")
-        store.set_completed("task-a", cost_usd=0.10)
-        store.set_running("task-b", "/tmp", "po/task-b")
-        store.set_completed("task-b", cost_usd=0.25)
-        assert store.get_total_cost() == pytest.approx(0.35)
-
-    def test_get_status_counts(self, store: SqliteTaskStore, sample_spec: ProjectSpec) -> None:
-        store.save_spec(sample_spec)
-        store.set_running("task-a", "/tmp", "po/task-a")
-        store.set_completed("task-a")
-        counts = store.get_status_counts()
-        assert counts["pending"] == 3
-        assert counts["completed"] == 1
-
     def test_upsert_replaces(self, store: SqliteTaskStore, sample_spec: ProjectSpec) -> None:
         store.save_spec(sample_spec)
         updated = TaskSpec(id="task-a", description="Updated description")
