@@ -318,11 +318,9 @@ content and previous error messages before embedding in prompts. 3 new tests.
 `get_connection()` now sets `0o600` on the DB file after creation. Added `ensure_logs_dir()`
 helper in `config.py` that creates `.po/logs/` with `0o700`. All callers updated to use it.
 
-### 49. Narrow git safe.directory in Docker entrypoint
-
-`entrypoint.sh` sets `git config --global --add safe.directory '*'`, which disables git's
-ownership check for all directories. Scope this to the specific project root path passed to
-the container instead.
+### ~~49. Narrow git safe.directory in Docker entrypoint~~ — DONE
+`docker.py` now passes `PO_PROJECT_ROOT` env var to the container. `entrypoint.sh` scopes
+`safe.directory` to the project root and working directory instead of wildcard `*`.
 
 ### 50. Remove redundant ANTHROPIC_API_KEY pass-through in Docker sandbox
 

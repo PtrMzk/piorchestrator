@@ -70,7 +70,10 @@ fi
 echo "Firewall verified: $(echo "$ALLOWED_IPS" | wc -w | tr -d ' ') IPs allowed, non-allowlisted hosts blocked."
 
 # --- Git configuration ---
-git config --global --add safe.directory '*'
+# Scope safe.directory to the project root (passed via PO_PROJECT_ROOT env var)
+# and the working directory (which may be a worktree subdirectory)
+git config --global --add safe.directory "${PO_PROJECT_ROOT:-$PWD}"
+git config --global --add safe.directory "$PWD"
 git config --global user.name "po-agent"
 git config --global user.email "po-agent@localhost"
 

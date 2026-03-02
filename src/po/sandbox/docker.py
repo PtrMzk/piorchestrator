@@ -221,6 +221,7 @@ class DockerSandbox:
             # Environment
             "-e", f"ANTHROPIC_API_KEY={env.get('ANTHROPIC_API_KEY', '')}",
             "-e", "HOME=/home/agent",
+            "-e", f"PO_PROJECT_ROOT={project_root}",
         ]
 
         # Inject all resolved host IPs via --add-host
