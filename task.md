@@ -289,3 +289,61 @@ IPs against a regex before passing them to `--add-host`. 377 tests passing.
 
 **Files:** `src/po/sandbox/entrypoint.sh`, `src/po/sandbox/Dockerfile`,
 `src/po/sandbox/docker.py`, `tests/test_sandbox.py`
+
+---
+
+## Phase 3 — Security Hardening & Cleanup
+
+### ~~44. Remove macOS seatbelt sandbox code~~ — DONE
+
+Deleted `src/po/sandbox/seatbelt.py`, removed `SeatbeltSandbox` export from
+`src/po/sandbox/__init__.py`, removed 16 seatbelt tests from `tests/test_sandbox.py`,
+and cleaned up all references in `ARCHITECTURE.md`.
+
+### 45. Remove unused/dead code across the codebase
+
+Audit all source files for dead imports, unreachable code paths, unused functions/classes, and
+stale references. Clean up anything that is no longer called or reachable.
+
+### 46. Fix shell injection in verification command execution
+
+`_run_verification()` in `src/po/orchestrator/merge.py` uses `subprocess.run(verification,
+shell=True)`, which allows arbitrary shell injection if a spec file contains a malicious
+verification command. Switch to `shlex.split()` with `shell=False`, or validate the command
+against a safe pattern.
+
+### 47. Prevent prompt injection via context files
+
+`src/po/agent/prompt_builder.py` includes context file content verbatim inside triple-backtick
+fences. A file containing triple backticks can break out of the fence and inject rogue
+instructions. Escape or replace backtick sequences in context file content before embedding.
+
+### 48. Restrict database and log file permissions
+
+`.po/state.db` and `.po/logs/` are created with default permissions, making them potentially
+readable by other users. Set `0o600` on the database file and `0o700` on the log directory
+after creation.
+
+### 49. Narrow git safe.directory in Docker entrypoint
+
+`entrypoint.sh` sets `git config --global --add safe.directory '*'`, which disables git's
+ownership check for all directories. Scope this to the specific project root path passed to
+the container instead.
+
+### 50. Remove redundant ANTHROPIC_API_KEY pass-through in Docker sandbox
+
+`docker.py` passes `ANTHROPIC_API_KEY` as an environment variable to the container, but auth is
+already handled via the named Docker volume with OAuth credentials. The env var is redundant and
+exposes the key via `docker inspect` / `/proc/*/environ`. Remove it unless it serves as a
+required fallback.
+
+### 51. Add spec size limits
+
+`spec/schema.py` has no upper bounds on the number of tasks, dependencies, context files, or
+output files. A malicious or accidental spec could cause OOM. Add reasonable limits (e.g., max
+1,000 tasks, max 50 dependencies per task).
+
+### 52. Add noexec to Docker tmpfs mount
+
+`docker.py` mounts `--tmpfs /tmp:size=1G` without `noexec`. Adding `noexec` prevents agents
+from compiling and executing arbitrary binaries from `/tmp` inside the container.
