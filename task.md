@@ -326,11 +326,10 @@ helper in `config.py` that creates `.po/logs/` with `0o700`. All callers updated
 Removed `ANTHROPIC_API_KEY` env var from `docker.py` `wrap_command()`. Auth is handled
 via the named Docker volume with OAuth credentials. Updated tests accordingly.
 
-### 51. Add spec size limits
-
-`spec/schema.py` has no upper bounds on the number of tasks, dependencies, context files, or
-output files. A malicious or accidental spec could cause OOM. Add reasonable limits (e.g., max
-1,000 tasks, max 50 dependencies per task).
+### ~~51. Add spec size limits~~ — DONE
+Added size limit constants: `MAX_TASKS=1000`, `MAX_DEPENDENCIES_PER_TASK=50`,
+`MAX_CONTEXT_FILES_PER_TASK=50`, `MAX_OUTPUT_FILES_PER_TASK=50`, `MAX_USER_STORIES=100`.
+Enforced in `TaskSpec.validate()` and `ProjectSpec.validate()`. 5 new tests.
 
 ### 52. Add noexec to Docker tmpfs mount
 

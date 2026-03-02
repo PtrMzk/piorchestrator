@@ -8,6 +8,13 @@ from typing import Any
 
 from po.config import DEFAULT_MAX_CONCURRENCY
 
+# Spec size limits to prevent accidental or malicious OOM
+MAX_TASKS = 1000
+MAX_DEPENDENCIES_PER_TASK = 50
+MAX_CONTEXT_FILES_PER_TASK = 50
+MAX_OUTPUT_FILES_PER_TASK = 50
+MAX_USER_STORIES = 100
+
 
 @dataclass
 class TaskSpec:
@@ -40,6 +47,21 @@ class TaskSpec:
             errors.append(f"Task '{self.id}' priority must be non-negative")
         if self.max_budget_usd < 0:
             errors.append(f"Task '{self.id}' max_budget_usd must be non-negative")
+        if len(self.dependencies) > MAX_DEPENDENCIES_PER_TASK:
+            errors.append(
+                f"Task '{self.id}' has {len(self.dependencies)} dependencies "
+                f"(max {MAX_DEPENDENCIES_PER_TASK})"
+            )
+        if len(self.context_files) > MAX_CONTEXT_FILES_PER_TASK:
+            errors.append(
+                f"Task '{self.id}' has {len(self.context_files)} context files "
+                f"(max {MAX_CONTEXT_FILES_PER_TASK})"
+            )
+        if len(self.output_files) > MAX_OUTPUT_FILES_PER_TASK:
+            errors.append(
+                f"Task '{self.id}' has {len(self.output_files)} output files "
+                f"(max {MAX_OUTPUT_FILES_PER_TASK})"
+            )
         return errors
 
     @classmethod
@@ -74,8 +96,17 @@ class ProjectSpec:
             errors.append("project_name must not be empty")
         if not self.tasks:
             errors.append("Project must have at least one task")
+        if len(self.tasks) > MAX_TASKS:
+            errors.append(
+                f"Project has {len(self.tasks)} tasks (max {MAX_TASKS})"
+            )
         if self.max_concurrency < 1:
             errors.append("max_concurrency must be at least 1")
+        if len(self.user_stories) > MAX_USER_STORIES:
+            errors.append(
+                f"Project has {len(self.user_stories)} user stories "
+                f"(max {MAX_USER_STORIES})"
+            )
 
         # Validate individual tasks
         task_ids: set[str] = set()

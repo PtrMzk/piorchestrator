@@ -8,7 +8,15 @@ from pathlib import Path
 import pytest
 
 from po.spec.loader import JsonSpecLoader
-from po.spec.schema import ProjectSpec, TaskSpec
+from po.spec.schema import (
+    MAX_CONTEXT_FILES_PER_TASK,
+    MAX_DEPENDENCIES_PER_TASK,
+    MAX_OUTPUT_FILES_PER_TASK,
+    MAX_TASKS,
+    MAX_USER_STORIES,
+    ProjectSpec,
+    TaskSpec,
+)
 
 
 class TestTaskSpec:
@@ -59,6 +67,24 @@ class TestTaskSpec:
         assert task.dependencies == []
         assert task.model == "haiku"
         assert task.max_budget_usd == 2.0
+
+    def test_too_many_dependencies(self) -> None:
+        deps = [f"dep-{i}" for i in range(MAX_DEPENDENCIES_PER_TASK + 1)]
+        task = TaskSpec(id="t", description="d", dependencies=deps)
+        errors = task.validate()
+        assert any("dependencies" in e for e in errors)
+
+    def test_too_many_context_files(self) -> None:
+        files = [f"f{i}.py" for i in range(MAX_CONTEXT_FILES_PER_TASK + 1)]
+        task = TaskSpec(id="t", description="d", context_files=files)
+        errors = task.validate()
+        assert any("context files" in e for e in errors)
+
+    def test_too_many_output_files(self) -> None:
+        files = [f"f{i}.py" for i in range(MAX_OUTPUT_FILES_PER_TASK + 1)]
+        task = TaskSpec(id="t", description="d", output_files=files)
+        errors = task.validate()
+        assert any("output files" in e for e in errors)
 
 
 class TestProjectSpec:
@@ -111,6 +137,22 @@ class TestProjectSpec:
         )
         errors = spec.validate()
         assert any("max_concurrency" in e for e in errors)
+
+    def test_too_many_tasks(self) -> None:
+        tasks = [TaskSpec(id=f"t-{i}", description="d") for i in range(MAX_TASKS + 1)]
+        spec = ProjectSpec(project_name="p", tasks=tasks)
+        errors = spec.validate()
+        assert any("tasks" in e and str(MAX_TASKS) in e for e in errors)
+
+    def test_too_many_user_stories(self) -> None:
+        stories = [f"story {i}" for i in range(MAX_USER_STORIES + 1)]
+        spec = ProjectSpec(
+            project_name="p",
+            tasks=[TaskSpec(id="t", description="d")],
+            user_stories=stories,
+        )
+        errors = spec.validate()
+        assert any("user stories" in e for e in errors)
 
     def test_from_dict(self) -> None:
         data = {
