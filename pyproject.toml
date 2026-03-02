@@ -23,6 +23,7 @@ packages = ["src/po"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["docker: tests requiring Docker daemon (deselect with -m 'not docker')"]
 
 [tool.ruff]
 target-version = "py312"

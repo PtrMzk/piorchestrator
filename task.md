@@ -342,3 +342,13 @@ Unlike E2E tests that replace the `AgentRunner` protocol, this test exercises th
 `_invoke_claude()` (sync) and `ClaudeCodeRunner.run()` (async) subprocess-spawning code
 paths. The mock binary is injected onto `$PATH` and handles spec generation, task execution
 (file creation + git commits), and returns stream-json output.
+
+### ~~54. Docker integration test with real containers~~ — DONE
+Added `test_full_init_to_run_flow_docker` marked with `@pytest.mark.docker`. Builds a
+lightweight test Docker image (node:22-alpine + mock claude + real entrypoint.sh, no
+`npm install`). Monkeypatches `DockerSandbox` with a subclass that uses the test image,
+loopback IPs for `--add-host`, and skips auth/build. Exercises the full `po init` →
+`po run --sandbox` flow through real Docker containers, covering `DockerSandbox.wrap_command()`,
+`entrypoint.sh` iptables setup, and `su-exec` user switching. Deselect with `-m 'not docker'`.
+
+**Files:** `tests/test_integration.py`, `pyproject.toml`
