@@ -167,7 +167,7 @@ handling, log tail parsing, status styles, and TTY detection.
 
 **Files:** `pyproject.toml`, `src/po/display/live.py`, `src/po/cli.py`, `tests/test_display.py`, `tests/test_cli.py`
 
-### ~~34. Dependency-layered tree in LiveDisplay~~ — DONE
+### ~~33. Dependency-layered tree in LiveDisplay~~ — DONE
 `_build_tree()` now computes BFS layers from task dependencies and renders each layer as
 a labeled branch (`Layer 0`, `Layer 1`, ...). Tasks with no deps appear in Layer 0,
 dependent tasks in subsequent layers. Subtasks still nest under their parent within the
@@ -176,7 +176,7 @@ tests added for layer grouping, labels, and updated node counts.
 
 **Files:** `src/po/display/live.py`, `tests/test_display.py`
 
-### ~~33. Auto-generate documentation tasks in specs~~ — DONE
+### ~~34. Auto-generate documentation tasks in specs~~ — DONE
 Added doc companion task constraints to init prompt and `_EXAMPLE_SPEC` (doc-models,
 doc-db, doc-routes). Doc tasks use sonnet model, 0.50 budget, ["docs"] tag, and write to
 `docs/<feature>.md`. Downstream implementation and e2e tasks include relevant doc files in
@@ -225,28 +225,6 @@ event printer. 13 new tests covering the ladder function and integration scenari
 
 **Files:** `src/po/config.py`, `src/po/orchestrator/loop.py`, `src/po/cli.py`, `tests/test_escalation.py` (new)
 
-### ~~40. Docker-based agent sandboxing~~ — DONE
-Added `SandboxProvider` protocol with `NoSandbox` (passthrough, default) and `DockerSandbox`
-implementations. `DockerSandbox` wraps agent commands in `docker run` with: project root
-mounted at the same absolute path (preserving worktree references), iptables firewall allowing
-only `api.anthropic.com:443`, tmpfs for `/tmp` and `/home/agent`, IPv6 disabled. Entrypoint
-runs as root for iptables setup then drops to non-root `agent` user via `su-exec`. Opt-in via
-`po run --sandbox`. 15 new tests covering protocol, DNS resolution, Docker checks, image
-building, and command wrapping.
-
-**Files:** `src/po/sandbox/__init__.py` (new), `src/po/sandbox/provider.py` (new),
-`src/po/sandbox/docker.py` (new), `src/po/sandbox/Dockerfile` (new),
-`src/po/sandbox/entrypoint.sh` (new), `src/po/agent/launcher.py`, `src/po/orchestrator/loop.py`,
-`src/po/cli.py`, `src/po/config.py`, `pyproject.toml`, `tests/test_sandbox.py` (new)
-
-**Follow-up fix:** Docker sandbox onboarding bypass, Python runtime, and package registry access.
-Added Python 3 + uv and ripgrep + musl compat libs to Dockerfile. Pre-seeded `~/.claude.json`
-with `hasCompletedOnboarding: true` to prevent interactive onboarding hang. Generalized
-`_resolve_api_ips()` → `_resolve_hosts()` to resolve multiple hostnames (API + package registries).
-Entrypoint now allows DNS (port 53) and matches registry hosts in `/etc/hosts` for iptables rules.
-Added `SANDBOX_REGISTRY_HOSTS` config constant and `CLAUDE_CONFIG_DIR`/`NODE_OPTIONS`/`USE_BUILTIN_RIPGREP`
-env vars in entrypoint.
-
 ### ~~39. Codebase documentation scan~~ — DONE
 Added `po scan` command that invokes Claude to analyze an existing codebase and generate
 nested documentation under `docs/codebase/` (configurable via `--output-dir`). Created
@@ -258,84 +236,32 @@ init prompts telling Claude to wire docs into `global_context_files` and per-tas
 
 **Files:** `src/po/scan/__init__.py` (new), `src/po/scan/scanner.py` (new), `src/po/cli.py`, `src/po/init/generator.py`, `tests/test_scan.py` (new), `tests/test_init.py`
 
-### ~~41. Replace Docker sandbox with macOS sandbox-exec~~ — DONE
-Added `SeatbeltSandbox` using macOS's `sandbox-exec` as an alternative sandbox provider.
-Kept as a lighter option for when Docker isn't available. 16 new seatbelt tests.
-
-**Files:** `src/po/sandbox/seatbelt.py` (new), `src/po/sandbox/__init__.py`,
-`src/po/cli.py`, `tests/test_sandbox.py`
-
-### ~~42. Fix Docker sandbox auth with named volume + one-time login~~ — DONE
-Replaced host-mount auth approach (which couldn't access macOS Keychain OAuth tokens) with
-a named Docker volume (`po-claude-auth`). On first `po run`, if the volume has no credentials,
-launches an interactive `docker run -it` container for `claude /login`. The user completes
-the OAuth flow once; credentials persist in the volume across all subsequent container runs.
-Removed all `.claude-host` staging logic from `docker.py` and `entrypoint.sh`. Removed
-`--tmpfs /home/agent` (conflicted with volume mount). Docker sandbox restored as default.
-6 new auth volume tests, 377 total tests passing.
-
-**Files:** `src/po/sandbox/docker.py`, `src/po/sandbox/entrypoint.sh`, `src/po/cli.py`,
-`src/po/config.py`, `tests/test_sandbox.py`
-
-### ~~43. Harden Docker sandbox firewall~~ — DONE
-Applied lessons from Claude Code's official devcontainer. Entrypoint now uses `set -euo pipefail`,
-fails hard if no allowed IPs found (prevents running without isolation), validates each IP from
-`/etc/hosts` against a regex, sets iptables default policy to DROP (not trailing REJECT),
-adds `ip6tables -P DROP` on all chains as belt-and-suspenders alongside sysctl disable, and
-verifies the firewall by testing that `example.com` is blocked and `api.anthropic.com` is
-reachable before starting the agent. Dockerfile adds `curl` (for verification) and `ip6tables`.
-`docker.py` adds `--cap-add=NET_RAW` (needed for curl in entrypoint) and validates DNS-resolved
-IPs against a regex before passing them to `--add-host`. 377 tests passing.
-
-**Files:** `src/po/sandbox/entrypoint.sh`, `src/po/sandbox/Dockerfile`,
-`src/po/sandbox/docker.py`, `tests/test_sandbox.py`
-
----
-
 ## Phase 3 — Security Hardening & Cleanup
 
-### ~~44. Remove macOS seatbelt sandbox code~~ — DONE
-
-Deleted `src/po/sandbox/seatbelt.py`, removed `SeatbeltSandbox` export from
-`src/po/sandbox/__init__.py`, removed 16 seatbelt tests from `tests/test_sandbox.py`,
-and cleaned up all references in `ARCHITECTURE.md`.
-
-### ~~45. Remove unused/dead code across the codebase~~ — DONE
+### ~~40. Remove unused/dead code across the codebase~~ — DONE
 Audited all source files. Removed 3 unused methods from `SqliteTaskStore`:
 `get_tasks_by_status()`, `get_total_cost()`, `get_status_counts()`. Removed
 corresponding dead tests. Updated e2e test to compute cost inline.
 
-### ~~46. Fix shell injection in verification command execution~~ — DONE
+### ~~41. Fix shell injection in verification command execution~~ — DONE
 Replaced `shell=True` with `shlex.split()` in both `merge.py:_run_verification()` and
 `loop.py:_run_verification()`. Verification commands are now parsed safely without shell
 interpretation.
 
-### ~~47. Prevent prompt injection via context files~~ — DONE
+### ~~42. Prevent prompt injection via context files~~ — DONE
 Added `_escape_backticks()` helper that escapes triple-backtick sequences in context file
 content and previous error messages before embedding in prompts. 3 new tests.
 
-### ~~48. Restrict database and log file permissions~~ — DONE
+### ~~43. Restrict database and log file permissions~~ — DONE
 `get_connection()` now sets `0o600` on the DB file after creation. Added `ensure_logs_dir()`
 helper in `config.py` that creates `.po/logs/` with `0o700`. All callers updated to use it.
 
-### ~~49. Narrow git safe.directory in Docker entrypoint~~ — DONE
-`docker.py` now passes `PO_PROJECT_ROOT` env var to the container. `entrypoint.sh` scopes
-`safe.directory` to the project root and working directory instead of wildcard `*`.
-
-### ~~50. Remove redundant ANTHROPIC_API_KEY pass-through in Docker sandbox~~ — DONE
-Removed `ANTHROPIC_API_KEY` env var from `docker.py` `wrap_command()`. Auth is handled
-via the named Docker volume with OAuth credentials. Updated tests accordingly.
-
-### ~~51. Add spec size limits~~ — DONE
+### ~~44. Add spec size limits~~ — DONE
 Added size limit constants: `MAX_TASKS=1000`, `MAX_DEPENDENCIES_PER_TASK=50`,
 `MAX_CONTEXT_FILES_PER_TASK=50`, `MAX_OUTPUT_FILES_PER_TASK=50`, `MAX_USER_STORIES=100`.
 Enforced in `TaskSpec.validate()` and `ProjectSpec.validate()`. 5 new tests.
 
-### ~~52. Add noexec to Docker tmpfs mount~~ — DONE
-Changed tmpfs mount from `/tmp:size=1G` to `/tmp:size=1G,noexec`. Prevents agents from
-executing compiled binaries from `/tmp` inside the container.
-
-### ~~53. Integration test with mock Claude binary~~ — DONE
+### ~~45. Integration test with mock Claude binary~~ — DONE
 Created `tests/mock_claude.py` (mock Claude CLI binary) and `tests/test_integration.py`
 that exercise the full `po init` → `po run` pipeline through real subprocess invocations.
 Unlike E2E tests that replace the `AgentRunner` protocol, this test exercises the real
@@ -343,17 +269,7 @@ Unlike E2E tests that replace the `AgentRunner` protocol, this test exercises th
 paths. The mock binary is injected onto `$PATH` and handles spec generation, task execution
 (file creation + git commits), and returns stream-json output.
 
-### ~~54. Docker integration test with real containers~~ — DONE
-Added `test_full_init_to_run_flow_docker` marked with `@pytest.mark.docker`. Builds a
-lightweight test Docker image (node:22-alpine + mock claude + real entrypoint.sh, no
-`npm install`). Monkeypatches `DockerSandbox` with a subclass that uses the test image,
-loopback IPs for `--add-host`, and skips auth/build. Exercises the full `po init` →
-`po run --sandbox` flow through real Docker containers, covering `DockerSandbox.wrap_command()`,
-`entrypoint.sh` iptables setup, and `su-exec` user switching. Deselect with `-m 'not docker'`.
-
-**Files:** `tests/test_integration.py`, `pyproject.toml`
-
-### ~~55. Fix environment-dependent test failures from default branch name~~ — DONE
+### ~~46. Fix environment-dependent test failures from default branch name~~ — DONE
 The `git_repo` fixture ran plain `git init`, so the branch name came from the machine's
 `init.defaultBranch`. On any machine (or CI runner) where that is unset or `master`,
 18 `test_merge.py` tests failed because the merger and assertions expect `main`.
@@ -361,15 +277,10 @@ Changed the fixture to `git init -b main`.
 
 **Files:** `tests/conftest.py`
 
-### ~~56. Remove all container/virtualization code~~ — DONE
-Piorchestrator is an orchestration library; process isolation is handled by a separate
-project. Deleted `src/po/sandbox/` (`provider.py`, `docker.py`, `Dockerfile`,
-`entrypoint.sh`) and `tests/test_sandbox.py`. Removed the `SandboxProvider` seam from
-`ClaudeCodeRunner` and `OrchestratorLoop`, the `--sandbox/--no-sandbox` CLI flag, the
-`SANDBOX_*` config constants, the Dockerfile/entrypoint wheel force-include, the `docker`
-pytest marker, and the Docker integration test. Agents now always run directly on the host
-in their git worktree. Undoes tasks 40–44, 48–50, 52, and the Docker half of 54.
 
-**Files:** `src/po/sandbox/` (deleted), `tests/test_sandbox.py` (deleted),
-`src/po/agent/launcher.py`, `src/po/orchestrator/loop.py`, `src/po/cli.py`,
-`src/po/config.py`, `pyproject.toml`, `tests/test_integration.py`, `ARCHITECTURE.md`
+### ~~47. Documentation cleanup for public release~~ — DONE
+Pruned `task.md` entries describing functionality that no longer exists and renumbered
+the remaining entries sequentially. Reworded the `ARCHITECTURE.md` note on agent
+permissions to describe the current design rather than the removed one.
+
+**Files:** `task.md`, `ARCHITECTURE.md`
