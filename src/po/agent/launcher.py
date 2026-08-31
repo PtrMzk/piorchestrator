@@ -17,7 +17,6 @@ from typing import Protocol
 
 from po.config import DEFAULT_MAX_TURNS, FAILURE_FILE, SUBTASKS_FILE, ensure_logs_dir
 from po.db.queries import AgentResult
-from po.sandbox.provider import NoSandbox, SandboxProvider
 from po.spec.schema import TaskSpec
 
 logger = logging.getLogger(__name__)
@@ -40,9 +39,6 @@ class AgentRunner(Protocol):
 
 class ClaudeCodeRunner:
     """Run Claude Code CLI via subprocess."""
-
-    def __init__(self, sandbox: SandboxProvider | None = None) -> None:
-        self._sandbox = sandbox or NoSandbox()
 
     async def run(
         self,
@@ -76,14 +72,6 @@ class ClaudeCodeRunner:
 
         if max_budget_usd is not None:
             cmd.extend(["--max-budget-usd", str(max_budget_usd)])
-
-        # Wrap through sandbox (NoSandbox is a passthrough)
-        cmd, env = self._sandbox.wrap_command(
-            cmd,
-            worktree_path=worktree_path,
-            project_root=project_root,
-            env=env,
-        )
 
         logger.debug("Running agent for %s: %s", task_id, " ".join(cmd[:6]))
 

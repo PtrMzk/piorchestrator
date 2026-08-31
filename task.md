@@ -360,3 +360,16 @@ The `git_repo` fixture ran plain `git init`, so the branch name came from the ma
 Changed the fixture to `git init -b main`.
 
 **Files:** `tests/conftest.py`
+
+### ~~56. Remove all container/virtualization code~~ — DONE
+Piorchestrator is an orchestration library; process isolation is handled by a separate
+project. Deleted `src/po/sandbox/` (`provider.py`, `docker.py`, `Dockerfile`,
+`entrypoint.sh`) and `tests/test_sandbox.py`. Removed the `SandboxProvider` seam from
+`ClaudeCodeRunner` and `OrchestratorLoop`, the `--sandbox/--no-sandbox` CLI flag, the
+`SANDBOX_*` config constants, the Dockerfile/entrypoint wheel force-include, the `docker`
+pytest marker, and the Docker integration test. Agents now always run directly on the host
+in their git worktree. Undoes tasks 40–44, 48–50, 52, and the Docker half of 54.
+
+**Files:** `src/po/sandbox/` (deleted), `tests/test_sandbox.py` (deleted),
+`src/po/agent/launcher.py`, `src/po/orchestrator/loop.py`, `src/po/cli.py`,
+`src/po/config.py`, `pyproject.toml`, `tests/test_integration.py`, `ARCHITECTURE.md`
