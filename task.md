@@ -292,3 +292,13 @@ repository would be all-rights-reserved and unusable by anyone else. Verified th
 wheel carries `License-Expression: MIT` and bundles the license file.
 
 **Files:** `LICENSE` (new), `pyproject.toml`, `README.md`
+
+### ~~49. Gitignore hygiene for public release~~ — DONE
+`.DS_Store`, `.po/`, and `.claude/settings.local.json` were only ignored via the local
+machine's global gitignore, so fresh clones would show them as untracked noise. Added them
+to the repository's own `.gitignore`, deleted the stray `.DS_Store`, and dropped a no-op
+`task.md` entry (the file is tracked, so ignoring it does nothing). Moved the untracked
+`scripts/audit-logs.py` helper out of the repository — it referenced an unrelated private
+project and hardcoded a local path.
+
+**Files:** `.gitignore`, `scripts/audit-logs.py` (removed)

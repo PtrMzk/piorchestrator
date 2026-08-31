@@ -208,3 +208,10 @@ __marimo__/
 
 # Claude stuff
 CLAUDE.md
+.claude/settings.local.json
+
+# PO state
+.po/
+
+# macOS
+.DS_Store
