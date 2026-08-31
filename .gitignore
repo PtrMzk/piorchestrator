@@ -208,6 +208,7 @@ __marimo__/
 
 # Claude stuff
 CLAUDE.md
+task.md
 .claude/settings.local.json
 
 # PO state
