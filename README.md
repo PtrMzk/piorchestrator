@@ -33,3 +33,7 @@ uv sync          # install dependencies
 uv run pytest    # run tests
 uv run ruff check src tests  # lint
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

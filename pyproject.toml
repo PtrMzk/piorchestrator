@@ -3,6 +3,8 @@ name = "po"
 version = "0.1.0"
 description = "An orchestrator built on top of Claude Code CLI"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = ["rich>=13.0"]
 

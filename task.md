@@ -284,3 +284,11 @@ the remaining entries sequentially. Reworded the `ARCHITECTURE.md` note on agent
 permissions to describe the current design rather than the removed one.
 
 **Files:** `task.md`, `ARCHITECTURE.md`
+
+### ~~48. Add MIT license~~ — DONE
+Added a `LICENSE` file (MIT, 2026 Piotr Mikolajczyk), declared `license`/`license-files`
+in `pyproject.toml`, and linked it from the README. Without a license the published
+repository would be all-rights-reserved and unusable by anyone else. Verified the built
+wheel carries `License-Expression: MIT` and bundles the license file.
+
+**Files:** `LICENSE` (new), `pyproject.toml`, `README.md`
