@@ -114,8 +114,10 @@ def git_repo(tmp_path: Path) -> Path:
     """Create a temporary git repository with an initial commit."""
     repo = tmp_path / "repo"
     repo.mkdir()
+    # -b main: the merger and several tests assume 'main'; without this the
+    # branch name comes from the machine's init.defaultBranch (often 'master').
     subprocess.run(
-        ["git", "init"], cwd=repo, capture_output=True, check=True,
+        ["git", "init", "-b", "main"], cwd=repo, capture_output=True, check=True,
     )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],

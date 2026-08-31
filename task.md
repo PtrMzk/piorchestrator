@@ -352,3 +352,11 @@ loopback IPs for `--add-host`, and skips auth/build. Exercises the full `po init
 `entrypoint.sh` iptables setup, and `su-exec` user switching. Deselect with `-m 'not docker'`.
 
 **Files:** `tests/test_integration.py`, `pyproject.toml`
+
+### ~~55. Fix environment-dependent test failures from default branch name~~ — DONE
+The `git_repo` fixture ran plain `git init`, so the branch name came from the machine's
+`init.defaultBranch`. On any machine (or CI runner) where that is unset or `master`,
+18 `test_merge.py` tests failed because the merger and assertions expect `main`.
+Changed the fixture to `git init -b main`.
+
+**Files:** `tests/conftest.py`
