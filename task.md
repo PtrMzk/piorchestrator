@@ -302,3 +302,9 @@ to the repository's own `.gitignore`, deleted the stray `.DS_Store`, and dropped
 project and hardcoded a local path.
 
 **Files:** `.gitignore`, `scripts/audit-logs.py` (removed)
+
+### ~~50. Pin the project to Python 3.13~~ — DONE
+`.python-version` requested 3.14; the environment and the full test suite run on 3.13.
+Committed the pin at 3.13, which satisfies `requires-python = ">=3.12"`.
+
+**Files:** `.python-version`
