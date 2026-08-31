@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -436,7 +436,9 @@ def _invoke_claude(
     status = Status("Thinking…", console=stderr_console)
     status.start()
 
-    fh = open(log_file, "wb") if log_file else None
+    # The handle is optional, so it cannot be a plain `with`; the `finally`
+    # block below closes it on every exit path.
+    fh = open(log_file, "wb") if log_file else None  # noqa: SIM115
     try:
         for raw_line in proc.stdout:
             line = raw_line.decode("utf-8", errors="replace").strip()
@@ -450,7 +452,7 @@ def _invoke_claude(
                     fh.flush()
                 continue
 
-            msg["timestamp"] = datetime.now(timezone.utc).isoformat()
+            msg["timestamp"] = datetime.now(UTC).isoformat()
             if fh:
                 fh.write(json.dumps(msg).encode())
                 fh.write(b"\n")

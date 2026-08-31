@@ -308,3 +308,16 @@ project and hardcoded a local path.
 Committed the pin at 3.13, which satisfies `requires-python = ">=3.12"`.
 
 **Files:** `.python-version`
+
+### ~~51. Clear all lint violations~~ — DONE
+`uv run ruff check src tests` — the command the README tells contributors to run — failed
+with 14 violations on a fresh clone. Applied ruff's auto-fixes (unused imports, import
+ordering, `datetime.UTC`, `TimeoutError`), removed a dead `task_lines` local in
+`scaffold/generator.py`, wrapped five over-length string literals, and suppressed one
+SIM115 false positive where the optional file handle is closed in a `finally` block.
+Verified the rewrapped literals compile to byte-identical string constants.
+
+**Files:** `src/po/agent/launcher.py`, `src/po/cli.py`, `src/po/init/generator.py`,
+`src/po/orchestrator/merge.py`, `src/po/playground/generator.py`,
+`src/po/scaffold/generator.py`, `tests/test_db.py`, `tests/test_escalation.py`,
+`tests/test_launcher.py`

@@ -14,7 +14,6 @@ from po.spec.schema import ProjectSpec
 
 from .conftest import MockAgentRunner, MockMergeStrategy, MockWorktreeProvider
 
-
 # --- escalate_model unit tests ---
 
 

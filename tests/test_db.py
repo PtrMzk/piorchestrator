@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from po.db.queries import SqliteTaskStore
 from po.spec.schema import ProjectSpec, TaskSpec
 

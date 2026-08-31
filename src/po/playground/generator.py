@@ -31,7 +31,10 @@ def _build_spec() -> dict[str, Any]:
                 "dependencies": [],
                 "context_files": ["README.md"],
                 "output_files": ["src/calc/__init__.py"],
-                "verification": "python -c \"from calc import Calculator; assert Calculator().add(1, 2) == 3\"",
+                "verification": (
+                    'python -c "from calc import Calculator; '
+                    'assert Calculator().add(1, 2) == 3"'
+                ),
                 "priority": 10,
                 "max_budget_usd": 0.50,
                 "tags": ["setup", "core"],
@@ -45,7 +48,10 @@ def _build_spec() -> dict[str, Any]:
                 "dependencies": ["init-calc"],
                 "context_files": ["src/calc/__init__.py"],
                 "output_files": ["src/calc/__init__.py"],
-                "verification": "python -c \"from calc import Calculator; assert Calculator().subtract(5, 3) == 2\"",
+                "verification": (
+                    'python -c "from calc import Calculator; '
+                    'assert Calculator().subtract(5, 3) == 2"'
+                ),
                 "priority": 8,
                 "max_budget_usd": 0.50,
                 "tags": ["core"],

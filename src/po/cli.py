@@ -558,7 +558,7 @@ def cmd_logs(args: argparse.Namespace) -> None:
         if ts:
             # Show local time as HH:MM:SS
             try:
-                from datetime import datetime, timezone
+                from datetime import datetime
                 dt = datetime.fromisoformat(ts).astimezone()
                 ts_prefix = dt.strftime("%H:%M:%S") + " "
             except (ValueError, TypeError):

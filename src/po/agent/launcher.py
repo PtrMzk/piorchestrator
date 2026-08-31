@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -124,7 +124,7 @@ class ClaudeCodeRunner:
                         fh.flush()
                         continue
 
-                    msg["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    msg["timestamp"] = datetime.now(UTC).isoformat()
                     fh.write(json.dumps(msg).encode())
                     fh.write(b"\n")
                     fh.flush()
@@ -154,7 +154,7 @@ class ClaudeCodeRunner:
                 # Give it a moment to exit cleanly, then kill
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     proc.kill()
                     await proc.wait()
             except ProcessLookupError:

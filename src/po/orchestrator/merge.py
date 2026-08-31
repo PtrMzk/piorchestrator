@@ -10,7 +10,7 @@ import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -346,7 +346,7 @@ class RebaseMerger:
                         fh.write(raw_line)
                         fh.flush()
                         continue
-                    msg["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    msg["timestamp"] = datetime.now(UTC).isoformat()
                     fh.write(json.dumps(msg).encode())
                     fh.write(b"\n")
                     fh.flush()
