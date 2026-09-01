@@ -49,7 +49,7 @@ This is the heart of the system. The async loop:
    - **Subtasks created** (agent wrote `.po-subtasks.json`): namespaces subtask IDs under the parent, inherits dependencies, adds them to the DB, marks parent as `decomposed`
    - **Failure**: retries if attempts remain (keeps the branch for incremental progress), otherwise marks `failed` and cascades `cancelled` to all dependents
 7. **Detects deadlock** — pending tasks with unsatisfiable dependencies
-8. **Handles signals** — first SIGINT cancels running tasks, terminates agent subprocesses, and kills every process group tracked in `procs.py` (merges, verification commands, merge agents); second force-exits
+8. **Handles signals** — first SIGINT cancels running tasks and kills every process group tracked in `procs.py` (agents, merges, verification commands, merge agents), taking their children with them; second force-exits
 
 Key design: tasks that write to the same files are serialized, while tasks with no file overlap run fully in parallel up to `--concurrency`.
 

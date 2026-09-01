@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
+import os
+import signal
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from po import procs
 from po.agent.launcher import ClaudeCodeRunner
 
 
@@ -309,3 +315,86 @@ class TestClaudeCodeRunner:
         assert "--max-turns" in cmd_args
         assert "25" in cmd_args
         assert mock_exec.call_args[1]["cwd"] == str(worktree)
+
+
+class TestAgentCancellation:
+    """Cancelling a task must take the agent's whole process tree with it.
+
+    These use a real subprocess rather than a mock, because the behaviour under
+    test is process-group signalling.
+    """
+
+    @staticmethod
+    def _stub_claude(bin_dir: Path, body: str) -> None:
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        script = bin_dir / "claude"
+        script.write_text(f"#!{sys.executable}\nimport os, sys\n{body}\n")
+        script.chmod(0o755)
+
+    @staticmethod
+    def _alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    @pytest.mark.asyncio
+    async def test_cancel_kills_the_agents_children(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A tool call the agent started (`npm run dev`) must not outlive it."""
+        worktree = tmp_path / "wt"
+        worktree.mkdir()
+        pid_file = tmp_path / "child.pid"
+        self._stub_claude(
+            tmp_path / "bin",
+            "import subprocess, time\n"
+            f"p = subprocess.Popen([{sys.executable!r}, '-c', 'import time; time.sleep(120)'])\n"
+            f"open({str(pid_file)!r}, 'w').write(str(p.pid))\n"
+            "time.sleep(120)\n",
+        )
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+
+        task = asyncio.create_task(
+            ClaudeCodeRunner().run(
+                task_id="cancelled", prompt="p", worktree_path=worktree,
+                model="sonnet", project_root=tmp_path,
+            )
+        )
+        # Wait for the agent to spawn its child before cancelling.
+        for _ in range(100):
+            if pid_file.exists() and pid_file.read_text().strip():
+                break
+            await asyncio.sleep(0.05)
+        grandchild = int(pid_file.read_text())
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        for _ in range(100):
+            if not self._alive(grandchild):
+                return
+            await asyncio.sleep(0.05)
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(grandchild, signal.SIGKILL)
+        raise AssertionError(f"agent's child {grandchild} survived cancellation")
+
+    @pytest.mark.asyncio
+    async def test_agent_pid_is_untracked_after_a_normal_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A finished agent must not linger in the registry as a stale pid."""
+        worktree = tmp_path / "wt"
+        worktree.mkdir()
+        result_line = json.dumps({"type": "result", "result": "ok"})
+        self._stub_claude(tmp_path / "bin", f"print({result_line!r})")
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+
+        await ClaudeCodeRunner().run(
+            task_id="clean", prompt="p", worktree_path=worktree,
+            model="sonnet", project_root=tmp_path,
+        )
+
+        assert procs.shutdown() == 0

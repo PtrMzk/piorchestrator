@@ -9,11 +9,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import signal
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from po import procs
 from po.config import (
     DEFAULT_MAX_TURNS,
     FAILURE_FILE,
@@ -89,6 +91,10 @@ class ClaudeCodeRunner:
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
                 limit=16 * 1024 * 1024,  # 16 MB — stream-json lines can be large
+                # Own process group. The agent spawns its own children (every
+                # Bash tool call), and signalling only `claude` leaves those
+                # running — a `npm run dev` it started outlives the shutdown.
+                start_new_session=True,
             )
         except FileNotFoundError:
             return AgentResult(
@@ -113,6 +119,9 @@ class ClaudeCodeRunner:
                 stderr_chunks.append(chunk)
 
         stderr_task = asyncio.create_task(_drain_stderr())
+        # Also reachable from the signal handler, in case a second Ctrl-C
+        # force-exits before this task's cancellation is processed.
+        procs.register_pid(proc.pid)
 
         try:
             assert proc.stdout is not None
@@ -152,20 +161,19 @@ class ClaudeCodeRunner:
             await stderr_task
             await proc.wait()
         except asyncio.CancelledError:
-            # Shutdown requested — terminate the subprocess
+            # Shutdown requested — tear down the agent and everything it spawned
             logger.info("Terminating agent subprocess for task %s", task_id)
-            try:
-                proc.terminate()
+            if procs.signal_group(proc.pid, signal.SIGTERM):
                 # Give it a moment to exit cleanly, then kill
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=5.0)
                 except TimeoutError:
-                    proc.kill()
+                    procs.signal_group(proc.pid, signal.SIGKILL)
                     await proc.wait()
-            except ProcessLookupError:
-                pass  # Already exited
             stderr_task.cancel()
             raise
+        finally:
+            procs.unregister_pid(proc.pid)
 
         stderr_bytes = b"".join(stderr_chunks)
 
