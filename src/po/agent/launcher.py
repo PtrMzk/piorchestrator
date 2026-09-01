@@ -9,13 +9,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from po.config import DEFAULT_MAX_TURNS, FAILURE_FILE, SUBTASKS_FILE, ensure_logs_dir
+from po.config import (
+    DEFAULT_MAX_TURNS,
+    FAILURE_FILE,
+    SUBTASKS_FILE,
+    agent_env,
+    ensure_logs_dir,
+)
 from po.db.queries import AgentResult
 from po.spec.schema import TaskSpec
 
@@ -57,8 +62,8 @@ class ClaudeCodeRunner:
         log_dir = ensure_logs_dir(project_root)
         log_file = log_dir / f"{task_id}.jsonl"
 
-        # Build environment — strip CLAUDE_CODE vars to avoid nesting issues
-        env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+        # Drop nesting markers only — auth vars must survive (see agent_env)
+        env = agent_env()
 
         cmd = [
             "claude",

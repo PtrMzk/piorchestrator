@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import subprocess
 import threading
 from datetime import UTC, datetime
@@ -13,7 +12,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.status import Status
 
-from po.config import ensure_logs_dir
+from po.config import agent_env, ensure_logs_dir
 from po.display.tools import tool_summary
 from po.spec.schema import ProjectSpec
 
@@ -405,7 +404,7 @@ def _invoke_claude(
     Returns:
         Tuple of (result_text, session_id or None).
     """
-    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    env = agent_env()
     # Allow large output for spec generation (thinking + JSON can exceed 32K default)
     env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "128000"
     cmd = [

@@ -2,7 +2,28 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+# Environment variables that mark an already-running Claude Code session. These
+# must not leak into a spawned agent, or the child mistakes itself for a nested
+# session. Everything else — notably CLAUDE_CONFIG_DIR and
+# CLAUDE_CODE_OAUTH_TOKEN — carries authentication and must survive: stripping
+# the whole CLAUDE* prefix makes the child start logged out.
+NESTED_SESSION_ENV_VARS = frozenset({
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SSE_PORT",
+})
+
+
+def agent_env() -> dict[str, str]:
+    """Return the environment for a spawned `claude` process.
+
+    Drops only the nesting markers, preserving auth and config.
+    """
+    return {k: v for k, v in os.environ.items() if k not in NESTED_SESSION_ENV_VARS}
+
 
 # Default directory for PO state
 PO_DIR = ".po"
