@@ -201,6 +201,7 @@ verification, priority, model, max_budget_usd, tags[]
 - **Merge conflict auto-resolution**: a separate Claude agent resolves rebase conflicts if they occur
 - **Retry with state preservation**: failed task branches are kept so retry attempts can build on partial progress
 - **Model escalation on retries**: when tasks retry, the model is automatically escalated up the ladder (haiku → sonnet → opus) to increase success probability; `--model` override disables escalation
+- **Default model resolution**: `config.py:DEFAULT_MODEL` is the single source of truth. `spec/schema.py` reads it for both `TaskSpec.model` and `ProjectSpec.default_model`, so a spec's `default_model` applies to every task that omits its own `"model"` key, and an explicit per-task `"model"` always wins
 - **macOS sleep prevention**: `caffeinate` is spawned during orchestration to prevent the machine from sleeping
 - **SQLite WAL mode**: enables safe concurrent read/write access to the task database
 - **Event callback system**: decouples orchestration from display (can emit events to different handlers)

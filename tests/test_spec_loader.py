@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from po.config import DEFAULT_MODEL
 from po.spec.loader import JsonSpecLoader
 from po.spec.schema import (
     MAX_CONTEXT_FILES_PER_TASK,
@@ -65,7 +66,7 @@ class TestTaskSpec:
     def test_from_dict_defaults(self) -> None:
         task = TaskSpec.from_dict({"id": "t1", "description": "Test"})
         assert task.dependencies == []
-        assert task.model == "haiku"
+        assert task.model == DEFAULT_MODEL
         assert task.max_budget_usd == 2.0
 
     def test_too_many_dependencies(self) -> None:

@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from po.config import DEFAULT_MAX_CONCURRENCY
+from po.config import DEFAULT_MAX_CONCURRENCY, DEFAULT_MODEL
 
 # Spec size limits to prevent accidental or malicious OOM
 MAX_TASKS = 1000
@@ -27,7 +27,7 @@ class TaskSpec:
     output_files: list[str] = field(default_factory=list)
     verification: str = ""
     priority: int = 0
-    model: str = "haiku"
+    model: str = DEFAULT_MODEL
     max_budget_usd: float = 2.0
     tags: list[str] = field(default_factory=list)
 
@@ -82,7 +82,7 @@ class ProjectSpec:
     project_name: str
     tasks: list[TaskSpec]
     description: str = ""
-    default_model: str = "haiku"
+    default_model: str = DEFAULT_MODEL
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY
     global_context: str = ""
     global_context_files: list[str] = field(default_factory=list)
@@ -136,7 +136,7 @@ class ProjectSpec:
         tasks = [TaskSpec.from_dict(t) for t in tasks_data]
 
         # Apply default_model to tasks that don't override it
-        default_model = data.get("default_model", "haiku")
+        default_model = data.get("default_model", DEFAULT_MODEL)
         for i, task_data in enumerate(tasks_data):
             if "model" not in task_data:
                 tasks[i].model = default_model

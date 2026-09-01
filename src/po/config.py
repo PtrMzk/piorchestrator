@@ -13,8 +13,9 @@ LOGS_DIR = "logs"
 # Default concurrency
 DEFAULT_MAX_CONCURRENCY = 5
 
-# Default model for task agents
-DEFAULT_MODEL = "haiku"
+# Default model for task agents. Single source of truth: `spec/schema.py`
+# reads this for both `TaskSpec.model` and `ProjectSpec.default_model`.
+DEFAULT_MODEL = "sonnet"
 
 # Model escalation ladder (weakest → strongest)
 MODEL_LADDER = ["haiku", "sonnet", "opus"]
