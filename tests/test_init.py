@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -13,6 +15,7 @@ from po.init.generator import (
     _build_spec_from_outline_prompt,
     _detect_codebase_docs,
     _extract_json,
+    _invoke_claude,
     generate_outline,
     generate_spec,
     generate_spec_from_outline,
@@ -413,3 +416,71 @@ class TestCodebaseDocsInPrompts:
     def test_init_prompt_no_docs_without_project_root(self):
         prompt = _build_init_prompt("test project")
         assert "Pre-scanned codebase" not in prompt
+
+
+class TestInvokeClaudeSubprocess:
+    """Exercise the real subprocess handling in `_invoke_claude`.
+
+    These tests use a stub `claude` on PATH rather than patching, because the
+    behaviour under test *is* the pipe handling.
+    """
+
+    @staticmethod
+    def _stub_claude(bin_dir: Path, body: str) -> None:
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        script = bin_dir / "claude"
+        # Absolute interpreter path: these tests replace PATH with bin_dir.
+        script.write_text(f"#!{sys.executable}\nimport sys\n{body}\n")
+        script.chmod(0o755)
+
+    def test_large_stderr_does_not_deadlock(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: >64KB on stderr used to fill the pipe and hang forever.
+
+        The child blocks writing to stderr while the parent is blocked reading
+        stdout, so neither side ever advances.
+        """
+        result = json.dumps({"type": "result", "result": "ok", "session_id": "s1"})
+        self._stub_claude(
+            tmp_path / "bin",
+            # 1 MB of stderr — far past the ~64KB pipe buffer — written before
+            # the result line so the deadlock would trigger prior to any stdout.
+            "sys.stderr.write('x' * 1_000_000)\n"
+            "sys.stderr.flush()\n"
+            f"print({result!r})\n",
+        )
+        monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+        text, session_id = _invoke_claude("prompt", "sonnet", project_root=tmp_path)
+
+        assert text == "ok"
+        assert session_id == "s1"
+
+    def test_no_result_surfaces_stderr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Exit 0 with no result message must report stderr, not swallow it."""
+        self._stub_claude(
+            tmp_path / "bin",
+            "sys.stderr.write('rate limit exceeded')\n",
+        )
+        monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+        with pytest.raises(RuntimeError, match="rate limit exceeded"):
+            _invoke_claude("prompt", "sonnet", project_root=tmp_path)
+
+    def test_stdin_is_closed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """stdin must be /dev/null so a prompting child cannot hang the run."""
+        result = json.dumps({"type": "result", "result": "ok"})
+        self._stub_claude(
+            tmp_path / "bin",
+            "assert sys.stdin.read() == '', 'stdin was not empty'\n"
+            f"print({result!r})\n",
+        )
+        monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+        text, _ = _invoke_claude("prompt", "sonnet", project_root=tmp_path)
+        assert text == "ok"

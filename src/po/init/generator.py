@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -424,10 +425,25 @@ def _invoke_claude(
 
     proc = subprocess.Popen(
         cmd,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
+        cwd=str(project_root) if project_root is not None else None,
     )
+
+    # Drain stderr on a thread. Reading it only after the process exits would
+    # deadlock: once the OS pipe buffer fills, the child blocks writing to
+    # stderr while we are still blocked reading stdout.
+    stderr_chunks: list[bytes] = []
+
+    def _drain_stderr() -> None:
+        assert proc.stderr is not None
+        for chunk in proc.stderr:
+            stderr_chunks.append(chunk)
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
 
     result_text: str | None = None
     result_session_id: str | None = None
@@ -490,14 +506,17 @@ def _invoke_claude(
             fh.close()
 
     proc.wait()
+    stderr_thread.join(timeout=5)
+    stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace").strip()
 
     if proc.returncode != 0:
-        assert proc.stderr is not None
-        err = proc.stderr.read().decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"Claude CLI failed (exit {proc.returncode}): {err}")
+        raise RuntimeError(f"Claude CLI failed (exit {proc.returncode}): {stderr_text}")
 
     if result_text is None:
-        raise RuntimeError("Claude CLI returned no result")
+        # Exit code 0 but no result message — surface stderr, which is often the
+        # only place the real cause (auth, rate limits, bad env) is reported.
+        detail = f": {stderr_text}" if stderr_text else " and wrote nothing to stderr"
+        raise RuntimeError(f"Claude CLI returned no result{detail}")
 
     if log_file:
         logger.info("Logs written to %s", log_file)
