@@ -47,6 +47,11 @@ DEFAULT_MAX_BUDGET_USD = 2.0
 # Default max turns for agent
 DEFAULT_MAX_TURNS = 50
 
+# Hard timeout for a task's verification command, in seconds. Generous enough
+# for a real test suite, short enough that a command which never exits (a dev
+# server named as `verification`) cannot wedge the run overnight.
+DEFAULT_VERIFICATION_TIMEOUT_S = 600.0
+
 # Patterns seeded into the project's .gitignore. Committed once at the start of
 # `po run`, before any task branch is cut — see OrchestratorLoop._prepare_repo.
 GITIGNORE_PATTERNS = [f"{PO_DIR}/", "node_modules/", "dist/", "build/"]

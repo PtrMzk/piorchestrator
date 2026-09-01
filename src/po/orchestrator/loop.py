@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import shlex
 import signal
 import subprocess
 from collections.abc import Callable
@@ -26,6 +25,7 @@ from po.config import (
 )
 from po.db.queries import AgentResult, SqliteTaskStore
 from po.orchestrator.merge import MergeResult, MergeStrategy, RebaseMerger
+from po.verify import run_verification
 from po.worktree.manager import GitWorktreeManager, WorktreeProvider, ensure_git_repo
 
 logger = logging.getLogger(__name__)
@@ -535,32 +535,16 @@ class OrchestratorLoop:
         logger.debug(
             "Running pre-merge verification for %s: %s", task_id, verification,
         )
-        verify_result = await asyncio.get_event_loop().run_in_executor(
+        log_file = ensure_logs_dir(self.project_root) / f"preverify-{task_id}.log"
+        outcome = await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: subprocess.run(
-                shlex.split(verification),
-                cwd=worktree_path,
-                capture_output=True,
-                text=True,
-            ),
+            lambda: run_verification(verification, worktree_path, log_file),
         )
-
-        log_dir = ensure_logs_dir(self.project_root)
-        log_file = log_dir / f"preverify-{task_id}.log"
-        with open(log_file, "w") as fh:
-            fh.write(f"Command: {verification}\n")
-            fh.write(f"Exit code: {verify_result.returncode}\n")
-            fh.write(f"--- stdout ---\n{verify_result.stdout}\n")
-            fh.write(f"--- stderr ---\n{verify_result.stderr}\n")
-
-        if verify_result.returncode == 0:
+        if outcome.ok:
             return None
 
         logger.warning("Pre-merge verification failed for %s", task_id)
-        detail = verify_result.stderr or verify_result.stdout or "(no output)"
-        if len(detail) > 500:
-            detail = "..." + detail[-500:]
-        return f"Pre-merge verification failed (cmd: {verification}): {detail}"
+        return f"Pre-merge verification failed (cmd: {verification}): {outcome.detail}"
 
     def _handle_failure(self, task_id: str) -> None:
         """Cancel dependents of a failed task."""

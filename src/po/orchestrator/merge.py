@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import shlex
 import shutil
 import subprocess
 import threading
@@ -15,6 +14,7 @@ from pathlib import Path
 from typing import Protocol
 
 from po.config import agent_env, ensure_logs_dir
+from po.verify import run_verification
 
 logger = logging.getLogger(__name__)
 
@@ -129,32 +129,17 @@ class RebaseMerger:
             return None
 
         logger.debug("Running verification for %s: %s", task_id, verification)
-        verify_result = subprocess.run(
-            shlex.split(verification),
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-        )
-
-        # Always write verification output to a log file
         log_dir = ensure_logs_dir(project_root)
-        verify_log = log_dir / f"verify-{task_id}.log"
-        with open(verify_log, "w") as fh:
-            fh.write(f"Command: {verification}\n")
-            fh.write(f"Exit code: {verify_result.returncode}\n")
-            fh.write(f"--- stdout ---\n{verify_result.stdout}\n")
-            fh.write(f"--- stderr ---\n{verify_result.stderr}\n")
-
-        if verify_result.returncode == 0:
+        outcome = run_verification(
+            verification, project_root, log_dir / f"verify-{task_id}.log",
+        )
+        if outcome.ok:
             return None
 
         logger.warning("Verification failed for %s, reverting merge", task_id)
         self._run_git(["reset", "--hard", "HEAD~1"], project_root)
 
-        detail = verify_result.stderr or verify_result.stdout or "(no output)"
-        # Truncate to last 500 chars to keep error messages readable
-        if len(detail) > 500:
-            detail = "..." + detail[-500:]
+        detail = outcome.detail
         prefix = (
             "Post-merge verification failed after agent resolution"
             if after_agent

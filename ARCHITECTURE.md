@@ -80,7 +80,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
 
 **Code walkthrough — processing results (`_process_result`):**
 - **Success path:**
-  1. **Pre-merge verification** — if the task has a `verification` command, runs it in the worktree (`cwd=worktree_path`) *before* detaching or merging. If it fails, treats it as an agent failure (retry if attempts remain, otherwise fail). Logs to `.po/logs/preverify-{task_id}.log`. This catches issues early while the worktree still exists, so retry agents can fix them without wasting a merge attempt.
+  1. **Pre-merge verification** — if the task has a `verification` command, runs it via `verify.py:run_verification()` in the worktree (`cwd=worktree_path`) *before* detaching or merging. If it fails, treats it as an agent failure (retry if attempts remain, otherwise fail). Logs to `.po/logs/preverify-{task_id}.log`. This catches issues early while the worktree still exists, so retry agents can fix them without wasting a merge attempt.
   2. `worktree_mgr.detach()` — `git worktree remove --force` + `git worktree prune` (frees the branch for checkout)
   3. `orchestrator/merge.py:RebaseMerger.merge()` — serialized by `asyncio.Lock`, runs in executor:
      - Recovers from state a crashed run left behind: `git rebase --abort` first (only that restores HEAD to a branch; deleting `.git/rebase-merge` leaves it detached), then removes any state directory git itself would not clear, then `git merge --abort` if `MERGE_HEAD` exists
@@ -88,7 +88,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
      - Checks out the base branch
      - `git rebase <base> po/{task_id}` → on success: `git checkout <base>` → `git merge --ff-only po/{task_id}`
      - If rebase fails: aborts, falls back to `_try_agent_merge()` → `git merge --no-ff --no-commit` → if conflicts, `_invoke_merge_agent()` spawns another Claude CLI to resolve conflict markers, stage files, commit. That spawn uses the same pipe discipline as every other Claude spawn: `config.agent_env()`, `stdin=DEVNULL`, and stderr drained on a daemon thread (see "Spawning Claude" below)
-     - Runs post-merge verification command; on failure: `git reset --hard HEAD~1` (reverts merge)
+     - Runs the post-merge verification command through the same `verify.py:run_verification()`; on failure: `git reset --hard HEAD~1` (reverts merge)
   4. On merge success: `worktree_mgr.remove()` (deletes branch), `store.set_completed()`
   5. On merge failure with retries left: keeps branch, sets task back to pending
 - **Subtask path:** namespaces IDs as `{parent}/{subtask}`, inherits parent deps, `store.add_runtime_task()`, marks parent `decomposed`
@@ -142,6 +142,7 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | **Agent** | `agent/launcher.py`, `agent/prompt_builder.py` | Claude CLI subprocess management, prompt construction, cost/session parsing |
 | **Merge** | `orchestrator/merge.py` | Rebase + fast-forward merge; spawns a "merge agent" Claude to resolve conflicts |
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
+| **Verification** | `verify.py` | Runs a task's verification command under a hard timeout, in its own process group |
 | **Scan** | `scan/scanner.py` | Codebase documentation generation via Claude CLI |
 | **Display** | `display/live.py`, `display/status.py`, `display/tools.py` | Rich terminal UI with 4Hz refresh, dependency-layered tree, live action tailing, tool summaries |
 
@@ -193,6 +194,7 @@ as an unexplained hang:
 | `scaffold/generator.py` | Stub file generation |
 | `docs/generator.py` | Documentation tree generation |
 | `scan/scanner.py` | Codebase documentation scanner |
+| `verify.py` | Verification command runner (timeout, process-group kill, output logging) |
 | `playground/generator.py` | Self-testing playground spec |
 
 ---
