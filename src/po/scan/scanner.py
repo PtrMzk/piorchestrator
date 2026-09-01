@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import subprocess
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
 from rich.status import Status
 
-from po.config import ensure_logs_dir
+from po.config import agent_env, ensure_logs_dir
 from po.display.tools import tool_summary
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ def _invoke_scan_agent(
 
     Returns the result text from the agent.
     """
-    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    env = agent_env()
     cmd = [
         "claude",
         "-p", prompt,
@@ -74,10 +74,25 @@ def _invoke_scan_agent(
 
     proc = subprocess.Popen(
         cmd,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
+        cwd=str(project_root),
     )
+
+    # Drain stderr on a thread. Reading it only after the process exits would
+    # deadlock: once the OS pipe buffer fills, the child blocks writing to
+    # stderr while we are still blocked reading stdout.
+    stderr_chunks: list[bytes] = []
+
+    def _drain_stderr() -> None:
+        assert proc.stderr is not None
+        for chunk in proc.stderr:
+            stderr_chunks.append(chunk)
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
 
     result_text: str | None = None
     assert proc.stdout is not None
@@ -124,14 +139,17 @@ def _invoke_scan_agent(
             status.stop()
 
     proc.wait()
+    stderr_thread.join(timeout=5)
+    stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace").strip()
 
     if proc.returncode != 0:
-        assert proc.stderr is not None
-        err = proc.stderr.read().decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"Claude CLI failed (exit {proc.returncode}): {err}")
+        raise RuntimeError(f"Claude CLI failed (exit {proc.returncode}): {stderr_text}")
 
     if result_text is None:
-        raise RuntimeError("Claude CLI returned no result")
+        # Exit 0 but no result message — surface stderr, which is often the only
+        # place the real cause (auth, rate limits, bad env) is reported.
+        detail = f": {stderr_text}" if stderr_text else " and wrote nothing to stderr"
+        raise RuntimeError(f"Claude CLI returned no result{detail}")
 
     logger.info("Scan logs written to %s", log_file)
     return result_text
