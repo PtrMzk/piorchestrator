@@ -5,16 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import shlex
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from po.config import ensure_logs_dir
+from po.config import agent_env, ensure_logs_dir
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +311,7 @@ class RebaseMerger:
             "complete the merge. Do NOT push or modify any other files."
         )
 
-        env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+        env = agent_env()
 
         cmd = [
             "claude",
@@ -328,10 +328,24 @@ class RebaseMerger:
         proc = subprocess.Popen(
             cmd,
             cwd=project_root,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
         )
+
+        # Drain stderr on a thread. Reading it only after the process exits would
+        # deadlock: once the OS pipe buffer fills, the child blocks writing to
+        # stderr while we are still blocked reading stdout.
+        stderr_chunks: list[bytes] = []
+
+        def _drain_stderr() -> None:
+            assert proc.stderr is not None
+            for chunk in proc.stderr:
+                stderr_chunks.append(chunk)
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
 
         assert proc.stdout is not None
         try:
@@ -360,8 +374,16 @@ class RebaseMerger:
             raise
 
         proc.wait()
+        stderr_thread.join(timeout=5)
 
         if proc.returncode != 0:
+            stderr_text = (
+                b"".join(stderr_chunks).decode("utf-8", errors="replace").strip()
+            )
+            logger.warning(
+                "Merge agent for %s exited with code %d: %s",
+                task_id, proc.returncode, stderr_text or "(no stderr)",
+            )
             return False
 
         # Verify the merge was committed (no conflicts remain)

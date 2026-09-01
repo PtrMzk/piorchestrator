@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import io
+import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -342,6 +345,92 @@ class TestInvokeMergeAgent:
         assert "-p" in captured_cmd
         prompt_idx = captured_cmd.index("-p") + 1
         assert "README.md" in captured_cmd[prompt_idx]
+
+
+class TestMergeAgentSubprocess:
+    """Exercise the real subprocess handling in `_invoke_merge_agent`.
+
+    These tests put a stub `claude` on PATH rather than patching Popen, because
+    the behaviour under test *is* the pipe/env handling.
+    """
+
+    @staticmethod
+    def _stub_claude(bin_dir: Path, body: str) -> None:
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        script = bin_dir / "claude"
+        # Absolute interpreter path so the stub does not depend on PATH order.
+        script.write_text(f"#!{sys.executable}\nimport os, sys\n{body}\n")
+        script.chmod(0o755)
+
+    @staticmethod
+    def _conflicted_repo(repo: Path, branch: str) -> None:
+        """Leave the repo mid-merge with a conflict in README.md."""
+        _make_conflicting_branch(repo, branch, "README.md", "branch side\n")
+        _commit_file(repo, "README.md", "main side\n", "Main side")
+        _git(["merge", "--no-ff", "--no-commit", branch], repo, check=False)
+
+    def test_large_stderr_does_not_deadlock(
+        self, git_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: >64KB on stderr used to fill the pipe and hang forever.
+
+        The child blocks writing to stderr while the parent is blocked reading
+        stdout, so neither side ever advances — the run stalls with no output.
+        """
+        self._conflicted_repo(git_repo, "po/big-stderr")
+        self._stub_claude(
+            tmp_path / "bin",
+            # 1 MB of stderr — far past the ~64KB pipe buffer — written before
+            # anything reaches stdout, so the deadlock would trigger first.
+            "sys.stderr.write('x' * 1_000_000)\n"
+            "sys.stderr.flush()\n"
+            "print('{\"type\": \"result\", \"result\": \"done\"}')\n",
+        )
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+
+        merger = RebaseMerger()
+        # Conflicts are left unresolved, so this reports failure — the point is
+        # that it returns at all.
+        assert merger._invoke_merge_agent("big-stderr", "po/big-stderr", git_repo) is False
+
+    def test_stdin_is_closed(
+        self, git_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """stdin must be /dev/null so a prompting child cannot hang the merge."""
+        self._conflicted_repo(git_repo, "po/stdin-check")
+        self._stub_claude(
+            tmp_path / "bin",
+            "assert sys.stdin.read() == '', 'stdin was not empty'\n",
+        )
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+
+        merger = RebaseMerger()
+        assert merger._invoke_merge_agent("stdin-check", "po/stdin-check", git_repo) is False
+
+    def test_auth_env_survives(
+        self, git_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Auth vars must reach the merge agent; only nesting markers are dropped."""
+        self._conflicted_repo(git_repo, "po/env-check")
+        self._stub_claude(
+            tmp_path / "bin",
+            "import json\n"
+            "print(json.dumps({'type': 'result', 'result': '', 'env': {\n"
+            "    'token': os.environ.get('CLAUDE_CODE_OAUTH_TOKEN', ''),\n"
+            "    'nested': os.environ.get('CLAUDECODE', ''),\n"
+            "}}))\n",
+        )
+        monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok-123")
+        monkeypatch.setenv("CLAUDECODE", "1")
+
+        merger = RebaseMerger()
+        merger._invoke_merge_agent("env-check", "po/env-check", git_repo)
+
+        log_file = git_repo / ".po" / "logs" / "merge-env-check.jsonl"
+        seen = json.loads(log_file.read_text().splitlines()[0])["env"]
+        assert seen["token"] == "tok-123"  # auth reaches the agent
+        assert seen["nested"] == ""  # nesting marker stripped
 
 
 class TestEnsureGitignore:

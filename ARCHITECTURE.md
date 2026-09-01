@@ -85,7 +85,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
      - Auto-detects the base branch (whatever branch was checked out when the orchestrator started; not hardcoded to `main`)
      - Cleans stale rebase/merge state, checks out base branch
      - `git rebase <base> po/{task_id}` → on success: `git checkout <base>` → `git merge --ff-only po/{task_id}`
-     - If rebase fails: aborts, falls back to `_try_agent_merge()` → `git merge --no-ff --no-commit` → if conflicts, `_invoke_merge_agent()` spawns another Claude CLI to resolve conflict markers, stage files, commit
+     - If rebase fails: aborts, falls back to `_try_agent_merge()` → `git merge --no-ff --no-commit` → if conflicts, `_invoke_merge_agent()` spawns another Claude CLI to resolve conflict markers, stage files, commit. That spawn uses the same pipe discipline as every other Claude spawn: `config.agent_env()`, `stdin=DEVNULL`, and stderr drained on a daemon thread (see "Spawning Claude" below)
      - Runs post-merge verification command; on failure: `git reset --hard HEAD~1` (reverts merge)
   4. On merge success: `worktree_mgr.remove()` (deletes branch), `store.set_completed()`
   5. On merge failure with retries left: keeps branch, sets task back to pending
@@ -142,6 +142,28 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
 | **Scan** | `scan/scanner.py` | Codebase documentation generation via Claude CLI |
 | **Display** | `display/live.py`, `display/status.py`, `display/tools.py` | Rich terminal UI with 4Hz refresh, dependency-layered tree, live action tailing, tool summaries |
+
+---
+
+## Spawning Claude
+
+Four places spawn the `claude` CLI: `agent/launcher.py` (task agents, async),
+`orchestrator/merge.py:_invoke_merge_agent` (conflict resolution),
+`init/generator.py:_invoke_claude` (spec generation), and
+`scan/scanner.py:_invoke_scan_agent` (codebase docs). All of them stream
+`--output-format stream-json` on stdout to a `.po/logs/*.jsonl` file, and all of
+them must follow the same three rules — each corresponds to a bug that presented
+as an unexplained hang:
+
+1. **Environment: `config.agent_env()`.** Never filter on the `CLAUDE` prefix —
+   that strips `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_CONFIG_DIR`, and the child
+   starts logged out. Only the three nesting markers get dropped.
+2. **`stdin=DEVNULL`.** An inherited terminal lets a child that decides to prompt
+   block forever, invisibly, behind whatever spinner or live display is drawn.
+3. **Drain stderr concurrently** (daemon thread for the sync spawns, an asyncio
+   task for the async one). Reading stderr only after `wait()` deadlocks once the
+   child writes past the ~64KB pipe buffer: it blocks on stderr while the parent
+   is still blocked reading stdout.
 
 ---
 
