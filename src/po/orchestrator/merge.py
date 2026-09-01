@@ -49,19 +49,48 @@ class RebaseMerger:
         self._base_branch = base_branch
 
     def _get_base_branch(self, project_root: Path) -> str:
-        """Return the base branch name, auto-detecting from HEAD if needed."""
+        """Return the base branch name, auto-detecting from HEAD if needed.
+
+        The answer is cached for the process lifetime, so detection has to
+        reject two readings of HEAD that look valid but are not:
+
+        - **Detached HEAD** — mid-rebase, mid-bisect, or left that way by a
+          crashed run. ``git rev-parse --abbrev-ref HEAD`` prints the literal
+          string ``HEAD`` there. Caching that merges every task into a detached
+          head for the rest of the run: the real branch silently never advances.
+        - **A ``po/`` branch** — a task branch left checked out, which would
+          make tasks merge into each other instead of into the base.
+
+        Either way, fall back to the conventional default branch.
+        """
         if self._base_branch is not None:
             return self._base_branch
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
+
+        result = self._run_git(["rev-parse", "--abbrev-ref", "HEAD"], project_root)
+        candidate = result.stdout.strip() if result.returncode == 0 else ""
+        if candidate and candidate != "HEAD" and not candidate.startswith("po/"):
+            self._base_branch = candidate
+            return self._base_branch
+
+        for fallback in ("main", "master"):
+            verify = self._run_git(
+                ["rev-parse", "--verify", f"refs/heads/{fallback}"], project_root,
+            )
+            if verify.returncode == 0:
+                logger.warning(
+                    "HEAD is %s, not a usable base branch; falling back to '%s'",
+                    f"'{candidate}'" if candidate else "unreadable", fallback,
+                )
+                self._base_branch = fallback
+                return self._base_branch
+
+        # Nothing usable. Return the conventional name so the caller's git
+        # command fails with a real message instead of merging into nowhere.
+        logger.error(
+            "Could not determine a base branch (HEAD is %s, no main/master)",
+            f"'{candidate}'" if candidate else "unreadable",
         )
-        if result.returncode == 0 and result.stdout.strip():
-            self._base_branch = result.stdout.strip()
-        else:
-            self._base_branch = "main"
+        self._base_branch = "main"
         return self._base_branch
 
     def _run_git(self, args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -171,9 +200,12 @@ class RebaseMerger:
         project_root: Path,
     ) -> MergeResult:
         """Synchronous merge logic."""
-        base = self._get_base_branch(project_root)
-
-        # Clean up stale rebase/merge state from previous failed attempts
+        # Clean up stale rebase/merge state from previous failed attempts.
+        # `git rebase --abort` comes first and does the real work: it is what
+        # puts HEAD back on a branch. Deleting the state directory alone leaves
+        # HEAD detached, which then defeats base branch detection below — so
+        # the rmtree is only a fallback for state git itself won't clear.
+        self._run_git(["rebase", "--abort"], project_root)
         git_dir = project_root / ".git"
         for stale_dir in ("rebase-merge", "rebase-apply"):
             stale_path = git_dir / stale_dir
@@ -184,6 +216,9 @@ class RebaseMerger:
         )
         if merge_head.returncode == 0:
             self._run_git(["merge", "--abort"], project_root)
+
+        # Detect only after recovery, so HEAD is on a branch again.
+        base = self._get_base_branch(project_root)
         self._run_git(["checkout", "-f", base], project_root)
 
         # Ensure .gitignore covers build artifacts before merging

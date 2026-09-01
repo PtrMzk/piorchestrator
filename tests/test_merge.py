@@ -197,10 +197,13 @@ class TestRebaseMergerConflict:
             mock_agent.return_value = MergeResult(success=True, needed_agent_resolution=True)
             merger._merge_sync("po/conflict-3", "conflict-3", "", git_repo)
 
-        # Should see rebase attempt, then rebase --abort
+        # Up-front recovery abort, the rebase attempt, then the abort under test
         rebase_calls = [c for c in calls if c[0] == "rebase"]
-        assert len(rebase_calls) == 2
-        assert rebase_calls[1] == ["rebase", "--abort"]
+        assert rebase_calls == [
+            ["rebase", "--abort"],
+            ["rebase", "main", "po/conflict-3"],
+            ["rebase", "--abort"],
+        ]
 
 
 class TestTryAgentMerge:
@@ -345,6 +348,67 @@ class TestInvokeMergeAgent:
         assert "-p" in captured_cmd
         prompt_idx = captured_cmd.index("-p") + 1
         assert "README.md" in captured_cmd[prompt_idx]
+
+
+class TestBaseBranchDetection:
+    """Base branch detection must reject HEAD readings that aren't branches."""
+
+    @staticmethod
+    def _leave_mid_rebase(repo: Path, branch: str) -> None:
+        """Leave the repo with a conflicted rebase in progress, HEAD detached."""
+        _make_conflicting_branch(repo, branch, "README.md", "branch side\n")
+        _commit_file(repo, "README.md", "main side\n", "Main side")
+        _git(["rebase", "main", branch], repo, check=False)
+        assert (repo / ".git" / "rebase-merge").exists()
+
+    def test_explicit_base_branch_wins(self, git_repo: Path) -> None:
+        """An explicitly configured base branch skips detection entirely."""
+        merger = RebaseMerger(base_branch="develop")
+        assert merger._get_base_branch(git_repo) == "develop"
+
+    def test_detached_head_does_not_become_base(self, git_repo: Path) -> None:
+        """Mid-rebase, `rev-parse --abbrev-ref HEAD` prints "HEAD" — not a branch.
+
+        Caching that merges every later task into a detached head, so the real
+        branch never advances and the whole run is silently thrown away.
+        """
+        self._leave_mid_rebase(git_repo, "po/detached")
+
+        assert RebaseMerger()._get_base_branch(git_repo) == "main"
+
+    def test_task_branch_does_not_become_base(self, git_repo: Path) -> None:
+        """A `po/` branch left checked out would make tasks merge into each other."""
+        _git(["checkout", "-b", "po/left-over"], git_repo)
+
+        assert RebaseMerger()._get_base_branch(git_repo) == "main"
+
+    def test_falls_back_to_master(self, git_repo: Path) -> None:
+        """Repos without `main` fall back to `master` before giving up."""
+        _git(["branch", "-m", "main", "master"], git_repo)
+        _git(["checkout", "--detach"], git_repo)
+
+        assert RebaseMerger()._get_base_branch(git_repo) == "master"
+
+    def test_stale_rebase_state_is_recovered(self, git_repo: Path) -> None:
+        """A crashed run leaves the repo mid-rebase; the next merge must recover.
+
+        Removing `.git/rebase-merge` is not enough — only `rebase --abort` puts
+        HEAD back on a branch.
+        """
+        # The follow-up task's branch has to exist before the repo is wedged —
+        # git refuses almost everything while a rebase is in progress.
+        _make_clean_branch(git_repo, "po/next-task", "next.py", "x = 1")
+        self._leave_mid_rebase(git_repo, "po/crashed")
+
+        merger = RebaseMerger()
+        result = merger._merge_sync("po/next-task", "next-task", "", git_repo)
+
+        assert result.success is True
+        assert (git_repo / "next.py").exists()
+        # main itself advanced — not some detached head
+        head = _git(["rev-parse", "--abbrev-ref", "HEAD"], git_repo).stdout.strip()
+        assert head == "main"
+        assert not (git_repo / ".git" / "rebase-merge").exists()
 
 
 class TestMergeAgentSubprocess:
