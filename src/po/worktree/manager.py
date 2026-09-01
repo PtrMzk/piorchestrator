@@ -29,45 +29,51 @@ class WorktreeInfo:
     branch: str
 
 
+def ensure_git_repo(project_root: Path) -> None:
+    """Ensure project_root is a git repo with at least one commit.
+
+    Module-level because the orchestrator needs it before the first worktree
+    exists, to commit a baseline .gitignore (see OrchestratorLoop._prepare_repo).
+    """
+    # Check if inside a git work tree
+    check = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if check.returncode != 0:
+        subprocess.run(
+            ["git", "init"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+    # Check if HEAD exists (repo may be initialized but have no commits)
+    head_check = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if head_check.returncode != 0:
+        subprocess.run(
+            ["git", "commit", "--allow-empty", "-m", "Initial commit (po)"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+
 class GitWorktreeManager:
     """Manage git worktrees for task isolation."""
 
-    @staticmethod
-    def _ensure_git_repo(project_root: Path) -> None:
-        """Ensure project_root is a git repo with at least one commit."""
-        # Check if inside a git work tree
-        check = subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if check.returncode != 0:
-            subprocess.run(
-                ["git", "init"],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-        # Check if HEAD exists (repo may be initialized but have no commits)
-        head_check = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if head_check.returncode != 0:
-            subprocess.run(
-                ["git", "commit", "--allow-empty", "-m", "Initial commit (po)"],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+    _ensure_git_repo = staticmethod(ensure_git_repo)
 
     def _branch_name(self, task_id: str) -> str:
         return f"po/{task_id}"

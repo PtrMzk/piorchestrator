@@ -61,8 +61,9 @@ Key design: tasks that write to the same files are serialized, while tasks with 
 5. Spawns `caffeinate -i -s` to prevent macOS sleep, then `asyncio.run(orchestrator.run())`
 
 **Code walkthrough — the async loop (`orchestrator/loop.py:OrchestratorLoop`):**
-1. `run()` installs SIGINT/SIGTERM handlers → `_request_shutdown()` (first signal cancels asyncio tasks; second calls `os._exit`)
-2. `_loop()` runs in a `while True`:
+1. `run()` calls `_prepare_repo()` — `worktree/manager.py:ensure_git_repo()` (init + initial commit if needed), then seeds and commits `.gitignore` from `config.GITIGNORE_PATTERNS`. **This must happen before the first `git worktree add`.** Any commit that lands on the base branch after a task branch was cut, touching a file the agent also writes, is an add/add conflict the task cannot avoid — and `.gitignore` is exactly that file for scaffolding tasks. It commits with a pathspec (`git commit -m … -- .gitignore`) so unrelated staged work is never swept in
+2. Installs SIGINT/SIGTERM handlers → `_request_shutdown()` (first signal cancels asyncio tasks; second calls `os._exit`)
+3. `_loop()` runs in a `while True`:
    - `_collect_completed()` — iterates `_running_tasks` dict, pops `.done()` asyncio Tasks, extracts `AgentResult` (catching `CancelledError` + exceptions)
    - `store.get_ready_task_ids()` — SQL query using `json_each()` to find pending tasks whose every dependency is completed (`db/queries.py:242-258`)
    - `_filter_output_overlap()` — computes the set of `output_files` for all running tasks, excludes ready tasks that intersect. Within a batch, tracks `batch_outputs` to prevent intra-iteration overlap too

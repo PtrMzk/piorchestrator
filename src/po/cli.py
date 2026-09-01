@@ -15,7 +15,7 @@ from typing import Any
 from po.config import (
     DEFAULT_MAX_TURNS,
     TERMINAL_STATUSES,
-    ensure_po_gitignore,
+    ensure_gitignore,
     logs_dir,
     state_db_path,
 )
@@ -287,7 +287,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
     print()
 
     # 5. Ensure .po/ is in .gitignore before creating the directory
-    ensure_po_gitignore(project_root)
+    ensure_gitignore(project_root)
 
     # 6. Persist to database
     db_path = state_db_path(project_root)
@@ -350,8 +350,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         cmd_plan(plan_args)
         print()
 
-    # Ensure .po/ is in .gitignore (safety net for older plans)
-    ensure_po_gitignore(project_root)
+    # .gitignore is seeded and committed by OrchestratorLoop._prepare_repo(),
+    # which has to run before the first task branch is cut.
 
     db_path = state_db_path(project_root)
 

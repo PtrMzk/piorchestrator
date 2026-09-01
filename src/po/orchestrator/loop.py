@@ -20,12 +20,13 @@ from po.config import (
     STATUS_DECOMPOSED,
     STATUS_PENDING,
     TERMINAL_STATUSES,
+    ensure_gitignore,
     ensure_logs_dir,
     escalate_model,
 )
 from po.db.queries import AgentResult, SqliteTaskStore
 from po.orchestrator.merge import MergeResult, MergeStrategy, RebaseMerger
-from po.worktree.manager import GitWorktreeManager, WorktreeProvider
+from po.worktree.manager import GitWorktreeManager, WorktreeProvider, ensure_git_repo
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +73,43 @@ class OrchestratorLoop:
         if self._on_event is not None:
             self._on_event(event, task_id, detail)
 
+    def _prepare_repo(self) -> None:
+        """Seed and commit .gitignore before the first task branch is cut.
+
+        Ordering is the whole point. A commit that lands on the base branch
+        *after* a task branch was created, touching a file the agent also
+        creates, is an add/add conflict at merge time — and `.gitignore` is
+        exactly that file for any scaffolding task. Doing it here, before any
+        `git worktree add`, means task branches inherit the file instead of
+        racing to invent it.
+        """
+        ensure_git_repo(self.project_root)
+        ensure_gitignore(self.project_root)
+        # Check git rather than whether we just edited the file: `po plan` may
+        # have written the patterns already, and an uncommitted .gitignore is
+        # invisible to task branches, which is the case that bites.
+        status = self._git(["status", "--porcelain", "--", ".gitignore"])
+        if not status.stdout.strip():
+            return
+        self._git(["add", "--", ".gitignore"])
+        # Pathspec form: commit only .gitignore, never whatever else is staged.
+        self._git([
+            "commit", "-m", "Add .gitignore for po state and build artifacts",
+            "--", ".gitignore",
+        ])
+
+    def _git(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=self.project_root,
+            capture_output=True,
+            text=True,
+        )
+
     async def run(self) -> None:
         """Run the orchestration loop until all tasks are terminal."""
+        self._prepare_repo()
+
         # Install signal handlers for graceful shutdown
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):

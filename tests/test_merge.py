@@ -108,8 +108,6 @@ class TestRebaseMergerCleanMerge:
     def test_merge_with_verification_fails_reverts(self, git_repo: Path) -> None:
         """Failed verification reverts the merge commit."""
         merger = RebaseMerger()
-        # Pre-seed .gitignore so _ensure_gitignore is a no-op during merge
-        merger._ensure_gitignore(git_repo)
         branch = _make_clean_branch(git_repo, "po/task-vf", "vf.py", "x = 1")
 
         # Count commits before
@@ -497,8 +495,13 @@ class TestMergeAgentSubprocess:
         assert seen["nested"] == ""  # nesting marker stripped
 
 
-class TestEnsureGitignore:
-    """Tests for .gitignore creation to prevent untracked files blocking merges."""
+class TestUntrackedArtifacts:
+    """Build artifacts left in the working tree must not block a merge.
+
+    Seeding `.gitignore` is the orchestrator's job now, done once before any
+    branch is cut (`OrchestratorLoop._prepare_repo`) — the merge used to commit
+    it mid-run, which made it conflict with every task that wrote one.
+    """
 
     def test_untracked_files_dont_block_merge(self, git_repo: Path) -> None:
         """Untracked build artifacts (dist/, node_modules/) don't block merge."""
@@ -513,26 +516,22 @@ class TestEnsureGitignore:
 
         result = merger._merge_sync(branch, "task-gi", "", git_repo)
         assert result.success is True
+        assert (git_repo / "new_file.py").exists()
 
-        # .gitignore should have been created with the expected patterns
-        gitignore = git_repo / ".gitignore"
-        assert gitignore.exists()
-        content = gitignore.read_text()
-        assert "node_modules/" in content
-        assert "dist/" in content
-        assert "build/" in content
+    def test_merge_adds_no_commit_of_its_own(self, git_repo: Path) -> None:
+        """The merge must not commit to the base branch behind the task's back.
 
-    def test_ensure_gitignore_idempotent(self, git_repo: Path) -> None:
-        """Calling _ensure_gitignore twice doesn't duplicate patterns."""
+        Any such commit lands *after* every in-flight branch was cut, so a task
+        touching the same file gets an add/add conflict it cannot avoid.
+        """
         merger = RebaseMerger()
+        branch = _make_clean_branch(git_repo, "po/no-extra", "extra.py", "x = 1")
+        before = _git(["rev-list", "--count", "main"], git_repo).stdout.strip()
 
-        merger._ensure_gitignore(git_repo)
-        first = (git_repo / ".gitignore").read_text()
+        assert merger._merge_sync(branch, "no-extra", "", git_repo).success is True
 
-        merger._ensure_gitignore(git_repo)
-        second = (git_repo / ".gitignore").read_text()
-
-        assert first == second
+        after = _git(["rev-list", "--count", "main"], git_repo).stdout.strip()
+        assert int(after) == int(before) + 1  # the task's commit, and nothing else
 
 
 class TestRebaseMergerAsync:

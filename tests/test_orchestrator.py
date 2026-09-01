@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from po.db.connection import init_db
 from po.db.queries import AgentResult, SqliteTaskStore
 from po.orchestrator.loop import OrchestratorLoop
+from po.orchestrator.merge import RebaseMerger
 from po.spec.schema import ProjectSpec
 
 from .conftest import MockAgentRunner, MockMergeStrategy, MockWorktreeProvider
@@ -355,3 +357,96 @@ class TestOrchestratorLoop:
         ends = [i for i, x in enumerate(run_order) if x.startswith("end:")]
         # The second start must come after the first end
         assert starts[1] > ends[0]
+
+
+class TestPrepareRepo:
+    """`.gitignore` must be committed before the first task branch is cut."""
+
+    @staticmethod
+    def _make_loop(project_root: Path, tmp_path: Path) -> OrchestratorLoop:
+        db_path = project_root / ".po" / "state.db"
+        store = SqliteTaskStore(init_db(db_path))
+        return OrchestratorLoop(
+            store=store,
+            project_root=project_root,
+            worktree_manager=MockWorktreeProvider(tmp_path / "wt"),
+            agent_runner=MockAgentRunner(),
+            merger=MockMergeStrategy(),
+        )
+
+    def _git(self, args: list[str], cwd: Path) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, check=True,
+        ).stdout
+
+    def test_commits_gitignore_before_any_branch(
+        self, git_repo: Path, tmp_path: Path
+    ) -> None:
+        """A committed .gitignore is inherited by task branches instead of invented.
+
+        When the merge committed it mid-run, every scaffolding task that wrote
+        its own .gitignore hit an unavoidable add/add conflict.
+        """
+        self._make_loop(git_repo, tmp_path)._prepare_repo()
+
+        assert self._git(["status", "--porcelain", "--", ".gitignore"], git_repo) == ""
+        content = (git_repo / ".gitignore").read_text()
+        for pattern in (".po/", "node_modules/", "dist/", "build/"):
+            assert pattern in content
+
+    def test_commits_gitignore_left_uncommitted_by_plan(
+        self, git_repo: Path, tmp_path: Path
+    ) -> None:
+        """`po plan` writes .gitignore but never commits it — still invisible."""
+        (git_repo / ".gitignore").write_text(".po/\nnode_modules/\ndist/\nbuild/\n")
+
+        self._make_loop(git_repo, tmp_path)._prepare_repo()
+
+        assert self._git(["status", "--porcelain", "--", ".gitignore"], git_repo) == ""
+
+    def test_commits_only_gitignore(self, git_repo: Path, tmp_path: Path) -> None:
+        """Unrelated staged work must not be swept into the .gitignore commit."""
+        (git_repo / "wip.py").write_text("x = 1")
+        subprocess.run(["git", "add", "wip.py"], cwd=git_repo, check=True)
+
+        self._make_loop(git_repo, tmp_path)._prepare_repo()
+
+        staged = self._git(["diff", "--cached", "--name-only"], git_repo)
+        assert staged.strip() == "wip.py"
+
+    def test_idempotent(self, git_repo: Path, tmp_path: Path) -> None:
+        """A second run adds no further commits."""
+        loop = self._make_loop(git_repo, tmp_path)
+        loop._prepare_repo()
+        before = self._git(["rev-list", "--count", "HEAD"], git_repo).strip()
+
+        loop._prepare_repo()
+
+        assert self._git(["rev-list", "--count", "HEAD"], git_repo).strip() == before
+
+    def test_agent_gitignore_merges_without_conflict(
+        self, git_repo: Path, tmp_path: Path
+    ) -> None:
+        """The scaffold scenario end to end: both sides want a .gitignore.
+
+        Previously main got its .gitignore commit *during* the merge, after the
+        task branch had been cut from a .gitignore-less main — an add/add
+        conflict on the very first task of every new project. Seeding before
+        the cut makes the agent's version an ordinary edit.
+        """
+        self._make_loop(git_repo, tmp_path)._prepare_repo()
+
+        # Task branch cut from main *after* prepare, agent writes its own file
+        subprocess.run(["git", "checkout", "-b", "po/scaffold"], cwd=git_repo, check=True)
+        (git_repo / ".gitignore").write_text("node_modules\ndist\n.vite\n")
+        subprocess.run(["git", "add", ".gitignore"], cwd=git_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Scaffold repo"], cwd=git_repo, check=True,
+        )
+        subprocess.run(["git", "checkout", "main"], cwd=git_repo, check=True)
+
+        result = RebaseMerger()._merge_sync("po/scaffold", "scaffold", "", git_repo)
+
+        assert result.success is True
+        assert result.needed_agent_resolution is False
+        assert ".vite" in (git_repo / ".gitignore").read_text()

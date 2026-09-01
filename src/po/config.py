@@ -47,6 +47,10 @@ DEFAULT_MAX_BUDGET_USD = 2.0
 # Default max turns for agent
 DEFAULT_MAX_TURNS = 50
 
+# Patterns seeded into the project's .gitignore. Committed once at the start of
+# `po run`, before any task branch is cut — see OrchestratorLoop._prepare_repo.
+GITIGNORE_PATTERNS = [f"{PO_DIR}/", "node_modules/", "dist/", "build/"]
+
 # Subtask/failure file names (written by agents)
 SUBTASKS_FILE = ".po-subtasks.json"
 FAILURE_FILE = ".po-failure.json"
@@ -86,20 +90,25 @@ def po_dir(project_root: Path) -> Path:
     return project_root / PO_DIR
 
 
-def ensure_po_gitignore(project_root: Path) -> None:
-    """Ensure .po/ is listed in the project's .gitignore.
+def ensure_gitignore(project_root: Path) -> bool:
+    """Ensure the project's .gitignore covers po state and build artifacts.
 
-    Idempotent: no-ops if .po/ is already present.
+    Idempotent: no-ops if every pattern is already present. Returns True if the
+    file was changed.
     """
     gitignore = project_root / ".gitignore"
     existing = gitignore.read_text() if gitignore.exists() else ""
-    if ".po/" in existing:
-        return
+
+    missing = [p for p in GITIGNORE_PATTERNS if p not in existing]
+    if not missing:
+        return False
+
     lines = existing.rstrip("\n")
     if lines:
         lines += "\n"
-    lines += ".po/\n"
+    lines += "\n".join(missing) + "\n"
     gitignore.write_text(lines)
+    return True
 
 
 def state_db_path(project_root: Path) -> Path:

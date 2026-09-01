@@ -114,32 +114,6 @@ class RebaseMerger:
                 None, self._merge_sync, branch, task_id, verification, project_root
             )
 
-    def _ensure_gitignore(self, project_root: Path) -> None:
-        """Ensure .gitignore contains common build artifact patterns.
-
-        Idempotent: no-ops if all patterns are already present.
-        Stages and commits the change to main so it persists.
-        """
-        gitignore = project_root / ".gitignore"
-        existing = gitignore.read_text() if gitignore.exists() else ""
-
-        patterns = ["node_modules/", "dist/", "build/"]
-        missing = [p for p in patterns if p not in existing]
-        if not missing:
-            return
-
-        lines = existing.rstrip("\n")
-        if lines:
-            lines += "\n"
-        lines += "\n".join(missing) + "\n"
-        gitignore.write_text(lines)
-
-        self._run_git(["add", ".gitignore"], project_root)
-        self._run_git(
-            ["commit", "-m", "Add .gitignore for build artifacts"],
-            project_root,
-        )
-
     def _run_verification(
         self,
         verification: str,
@@ -220,9 +194,6 @@ class RebaseMerger:
         # Detect only after recovery, so HEAD is on a branch again.
         base = self._get_base_branch(project_root)
         self._run_git(["checkout", "-f", base], project_root)
-
-        # Ensure .gitignore covers build artifacts before merging
-        self._ensure_gitignore(project_root)
 
         # Step 1: Rebase task branch onto base branch
         logger.debug("Rebasing %s onto %s", branch, base)

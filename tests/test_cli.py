@@ -21,7 +21,7 @@ from po.cli import (
     cmd_status,
     main,
 )
-from po.config import ensure_po_gitignore, state_db_path
+from po.config import ensure_gitignore, state_db_path
 from po.db.connection import init_db
 from po.db.queries import SqliteTaskStore
 from po.spec.schema import ProjectSpec
@@ -641,29 +641,44 @@ class TestLiveEventPrinter:
 
 
 class TestEnsurePoGitignore:
-    """Tests for ensure_po_gitignore."""
+    """Tests for ensure_gitignore."""
 
     def test_creates_gitignore_with_po(self, tmp_path: Path) -> None:
-        ensure_po_gitignore(tmp_path)
+        ensure_gitignore(tmp_path)
         content = (tmp_path / ".gitignore").read_text()
         assert ".po/" in content
 
     def test_appends_to_existing_gitignore(self, tmp_path: Path) -> None:
         (tmp_path / ".gitignore").write_text("node_modules/\n")
-        ensure_po_gitignore(tmp_path)
+        ensure_gitignore(tmp_path)
         content = (tmp_path / ".gitignore").read_text()
         assert "node_modules/" in content
         assert ".po/" in content
 
     def test_idempotent(self, tmp_path: Path) -> None:
-        ensure_po_gitignore(tmp_path)
+        ensure_gitignore(tmp_path)
         first = (tmp_path / ".gitignore").read_text()
-        ensure_po_gitignore(tmp_path)
+        ensure_gitignore(tmp_path)
         second = (tmp_path / ".gitignore").read_text()
         assert first == second
 
     def test_noop_when_already_present(self, tmp_path: Path) -> None:
-        (tmp_path / ".gitignore").write_text("stuff\n.po/\nmore\n")
-        ensure_po_gitignore(tmp_path)
+        original = "stuff\n.po/\nnode_modules/\ndist/\nbuild/\nmore\n"
+        (tmp_path / ".gitignore").write_text(original)
+        assert ensure_gitignore(tmp_path) is False
+        assert (tmp_path / ".gitignore").read_text() == original
+
+    def test_adds_build_artifact_patterns(self, tmp_path: Path) -> None:
+        """Build artifacts are covered too, so verification output stays untracked."""
+        assert ensure_gitignore(tmp_path) is True
         content = (tmp_path / ".gitignore").read_text()
-        assert content == "stuff\n.po/\nmore\n"
+        for pattern in (".po/", "node_modules/", "dist/", "build/"):
+            assert pattern in content
+
+    def test_partial_match_still_appends(self, tmp_path: Path) -> None:
+        """A file with some patterns gets only the missing ones."""
+        (tmp_path / ".gitignore").write_text(".po/\n")
+        assert ensure_gitignore(tmp_path) is True
+        content = (tmp_path / ".gitignore").read_text()
+        assert content.count(".po/") == 1
+        assert "build/" in content
