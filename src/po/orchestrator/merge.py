@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from po import procs
 from po.config import agent_env, ensure_logs_dir
 from po.verify import run_verification
 
@@ -94,11 +95,27 @@ class RebaseMerger:
         return self._base_branch
 
     def _run_git(self, args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
+        """Run a git command, tracked so a shutdown can kill it.
+
+        Deliberately does *not* refuse to run during shutdown: the abort
+        commands that put the repo back on its feet are themselves git calls.
+        """
+        proc = subprocess.Popen(
             ["git", *args],
             cwd=cwd,
-            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
+            start_new_session=True,
+        )
+        procs.register(proc)
+        try:
+            stdout, stderr = proc.communicate()
+        finally:
+            procs.unregister(proc)
+        return subprocess.CompletedProcess(
+            proc.args, proc.returncode, stdout, stderr,
         )
 
     async def merge(
@@ -180,9 +197,14 @@ class RebaseMerger:
         base = self._get_base_branch(project_root)
         self._run_git(["checkout", "-f", base], project_root)
 
+        if procs.is_shutting_down():
+            return self._cancelled(project_root, base)
+
         # Step 1: Rebase task branch onto base branch
         logger.debug("Rebasing %s onto %s", branch, base)
         result = self._run_git(["rebase", base, branch], project_root)
+        if procs.is_shutting_down():
+            return self._cancelled(project_root, base)
         if result.returncode != 0:
             # Abort the failed rebase
             logger.info(
@@ -210,6 +232,19 @@ class RebaseMerger:
         logger.debug("Merge succeeded for %s", task_id)
         return MergeResult(success=True)
 
+    def _cancelled(self, project_root: Path, base: str) -> MergeResult:
+        """Abandon the merge and leave the repo somewhere a human can work.
+
+        Ctrl-C during a rebase is exactly how a repo ends up stuck at
+        `REBASE 2/2` with a detached HEAD, so unwinding is the whole point of
+        interrupting cleanly rather than being killed.
+        """
+        logger.info("Merge cancelled, restoring %s", base)
+        self._run_git(["rebase", "--abort"], project_root)
+        self._run_git(["merge", "--abort"], project_root)
+        self._run_git(["checkout", "-f", base], project_root)
+        return MergeResult(success=False, error_message="Merge cancelled by shutdown")
+
     def _try_agent_merge(
         self,
         branch: str,
@@ -225,6 +260,8 @@ class RebaseMerger:
         3. Complete the merge commit and run verification.
         """
         base = self._get_base_branch(project_root)
+        if procs.is_shutting_down():
+            return self._cancelled(project_root, base)
         self._run_git(["checkout", "-f", base], project_root)
 
         # Start merge without committing so we can inspect conflicts
@@ -243,6 +280,8 @@ class RebaseMerger:
             # There are conflicts — invoke Claude to resolve
             logger.info("Conflicts detected for %s, invoking merge agent", task_id)
             agent_ok = self._invoke_merge_agent(task_id, branch, project_root)
+            if procs.is_shutting_down():
+                return self._cancelled(project_root, base)
             if not agent_ok:
                 logger.warning("Merge agent failed for %s, aborting merge", task_id)
                 self._run_git(["merge", "--abort"], project_root)
@@ -323,7 +362,11 @@ class RebaseMerger:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
+            # Own process group, so a shutdown kills the agent's own children
+            # (its Bash tool calls) and not just the `claude` process itself.
+            start_new_session=True,
         )
+        procs.register(proc)
 
         # Drain stderr on a thread. Reading it only after the process exits would
         # deadlock: once the OS pipe buffer fills, the child blocks writing to
@@ -356,16 +399,17 @@ class RebaseMerger:
                     fh.write(b"\n")
                     fh.flush()
         except KeyboardInterrupt:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+            procs.kill_group(proc)
+            proc.wait()
             raise
+        finally:
+            procs.unregister(proc)
 
         proc.wait()
         stderr_thread.join(timeout=5)
+
+        if procs.is_shutting_down():
+            return False
 
         if proc.returncode != 0:
             stderr_text = (

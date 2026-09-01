@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-import os
 import shlex
-import signal
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from po import procs
 from po.config import DEFAULT_VERIFICATION_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
@@ -24,15 +23,7 @@ class VerificationOutcome:
 
     ok: bool
     detail: str = ""
-
-
-def _kill_process_group(proc: subprocess.Popen[str]) -> None:
-    """Kill the command and everything it spawned."""
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (AttributeError, OSError):
-        # No process groups (Windows), or the process is already gone.
-        proc.kill()
+    cancelled: bool = False
 
 
 def _tail(text: str) -> str:
@@ -61,6 +52,8 @@ def run_verification(
     argv = shlex.split(command)
     if not argv:
         return VerificationOutcome(ok=True)
+    if procs.is_shutting_down():
+        return VerificationOutcome(ok=False, detail="cancelled", cancelled=True)
 
     timed_out = False
     try:
@@ -80,6 +73,7 @@ def run_verification(
         log_file.write_text(f"Command: {command}\n{detail}\n")
         return VerificationOutcome(ok=False, detail=detail)
 
+    procs.register(proc)
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -88,8 +82,16 @@ def run_verification(
             "Verification command timed out after %.0fs, killing: %s",
             timeout, command,
         )
-        _kill_process_group(proc)
+        procs.kill_group(proc)
         stdout, stderr = proc.communicate()
+    finally:
+        procs.unregister(proc)
+
+    # A shutdown kills the process group out from under communicate(), which
+    # then returns a spurious non-zero exit. Report that as cancelled, not as
+    # a verification failure that would send the task back for a retry.
+    if procs.is_shutting_down():
+        return VerificationOutcome(ok=False, detail="cancelled", cancelled=True)
 
     exit_code = f"timed out after {timeout:.0f}s" if timed_out else str(proc.returncode)
     with open(log_file, "w") as fh:

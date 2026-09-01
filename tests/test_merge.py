@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from po import procs
 from po.orchestrator.merge import MergeResult, RebaseMerger
 
 
@@ -575,3 +578,71 @@ class TestRebaseMergerAsync:
         assert order[1].startswith("end-")
         assert order[2].startswith("start-")
         assert order[3].startswith("end-")
+
+
+class TestMergeInterruption:
+    """Ctrl-C during a merge must stop it and leave the repo usable."""
+
+    def test_cancelled_merge_unwinds_the_repo(self, git_repo: Path) -> None:
+        """The interrupted merge aborts its own rebase instead of orphaning it.
+
+        Being killed mid-rebase is exactly how a repo ends up stuck at
+        `REBASE 2/2` on a detached HEAD.
+        """
+        _make_conflicting_branch(git_repo, "po/interrupted", "README.md", "branch\n")
+        _commit_file(git_repo, "README.md", "main\n", "Main side")
+        merger = RebaseMerger()
+
+        procs.shutdown()
+        result = merger._merge_sync("po/interrupted", "interrupted", "", git_repo)
+
+        assert result.success is False
+        assert "cancelled" in result.error_message.lower()
+        assert not (git_repo / ".git" / "rebase-merge").exists()
+        head = _git(["rev-parse", "--abbrev-ref", "HEAD"], git_repo).stdout.strip()
+        assert head == "main"
+
+    def test_cancelled_merge_does_not_invoke_the_merge_agent(
+        self, git_repo: Path
+    ) -> None:
+        """Shutdown must not spawn a fresh Claude agent on the way out."""
+        _make_conflicting_branch(git_repo, "po/no-agent", "README.md", "branch\n")
+        _commit_file(git_repo, "README.md", "main\n", "Main side")
+        merger = RebaseMerger()
+
+        procs.shutdown()
+        with patch.object(merger, "_invoke_merge_agent") as mock_agent:
+            merger._merge_sync("po/no-agent", "no-agent", "", git_repo)
+
+        mock_agent.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_interrupts_a_merge_in_flight(self, git_repo: Path) -> None:
+        """The real complaint: a merge already running must not ignore Ctrl-C.
+
+        The merge blocks an executor thread, which asyncio cancellation cannot
+        reach — killing the tracked subprocess is what actually stops it.
+        """
+        _make_clean_branch(git_repo, "po/slow", "slow.py", "x = 1")
+        merger = RebaseMerger()
+
+        async def interrupt_once_running() -> None:
+            # Let the merge reach its verification command, then "press Ctrl-C".
+            await asyncio.sleep(1.0)
+            procs.shutdown()
+
+        start = time.monotonic()
+        merge_task = asyncio.create_task(
+            merger.merge(
+                branch="po/slow",
+                task_id="slow",
+                verification=f"{sys.executable} -c 'import time; time.sleep(120)'",
+                project_root=git_repo,
+            )
+        )
+        await interrupt_once_running()
+        result = await asyncio.wait_for(merge_task, timeout=30)
+        elapsed = time.monotonic() - start
+
+        assert result.success is False
+        assert elapsed < 30, f"merge ran {elapsed:.0f}s after shutdown"

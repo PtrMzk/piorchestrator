@@ -11,10 +11,19 @@ from typing import Any
 
 import pytest
 
+from po import procs
 from po.db.connection import init_db
 from po.db.queries import AgentResult, SqliteTaskStore
 from po.spec.schema import ProjectSpec, TaskSpec
 from po.worktree.manager import WorktreeInfo
+
+
+@pytest.fixture(autouse=True)
+def _reset_procs():
+    """`po.procs` is process-global; a leaked shutdown flag fails later tests."""
+    procs.reset()
+    yield
+    procs.reset()
 
 # ──────────────────────────── Sample data ────────────────────────────
 

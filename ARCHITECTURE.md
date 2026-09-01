@@ -49,7 +49,7 @@ This is the heart of the system. The async loop:
    - **Subtasks created** (agent wrote `.po-subtasks.json`): namespaces subtask IDs under the parent, inherits dependencies, adds them to the DB, marks parent as `decomposed`
    - **Failure**: retries if attempts remain (keeps the branch for incremental progress), otherwise marks `failed` and cascades `cancelled` to all dependents
 7. **Detects deadlock** — pending tasks with unsatisfiable dependencies
-8. **Handles signals** — first SIGINT cancels running tasks and terminates agent subprocesses; second force-exits
+8. **Handles signals** — first SIGINT cancels running tasks, terminates agent subprocesses, and kills every process group tracked in `procs.py` (merges, verification commands, merge agents); second force-exits
 
 Key design: tasks that write to the same files are serialized, while tasks with no file overlap run fully in parallel up to `--concurrency`.
 
@@ -62,7 +62,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
 
 **Code walkthrough — the async loop (`orchestrator/loop.py:OrchestratorLoop`):**
 1. `run()` calls `_prepare_repo()` — `worktree/manager.py:ensure_git_repo()` (init + initial commit if needed), then seeds and commits `.gitignore` from `config.GITIGNORE_PATTERNS`. **This must happen before the first `git worktree add`.** Any commit that lands on the base branch after a task branch was cut, touching a file the agent also writes, is an add/add conflict the task cannot avoid — and `.gitignore` is exactly that file for scaffolding tasks. It commits with a pathspec (`git commit -m … -- .gitignore`) so unrelated staged work is never swept in
-2. Installs SIGINT/SIGTERM handlers → `_request_shutdown()` (first signal cancels asyncio tasks; second calls `os._exit`)
+2. Installs SIGINT/SIGTERM handlers → `_request_shutdown()`. Cancelling asyncio tasks stops the agents, whose subprocesses are awaited by those tasks — but **not** a merge or verification command, which block an executor thread that cancellation cannot reach, and which `asyncio.run()` then joins on the way out. So the handler also calls `procs.shutdown()` to kill those process groups directly. Interrupted tasks are parked back to `pending` (`_abandon_for_shutdown`) rather than recorded as failures. Second signal kills whatever registered since — the merge's own abort commands — then `os._exit`
 3. `_loop()` runs in a `while True`:
    - `_collect_completed()` — iterates `_running_tasks` dict, pops `.done()` asyncio Tasks, extracts `AgentResult` (catching `CancelledError` + exceptions)
    - `store.get_ready_task_ids()` — SQL query using `json_each()` to find pending tasks whose every dependency is completed (`db/queries.py:242-258`)
@@ -89,6 +89,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
      - `git rebase <base> po/{task_id}` → on success: `git checkout <base>` → `git merge --ff-only po/{task_id}`
      - If rebase fails: aborts, falls back to `_try_agent_merge()` → `git merge --no-ff --no-commit` → if conflicts, `_invoke_merge_agent()` spawns another Claude CLI to resolve conflict markers, stage files, commit. That spawn uses the same pipe discipline as every other Claude spawn: `config.agent_env()`, `stdin=DEVNULL`, and stderr drained on a daemon thread (see "Spawning Claude" below)
      - Runs the post-merge verification command through the same `verify.py:run_verification()`; on failure: `git reset --hard HEAD~1` (reverts merge)
+     - Checks `procs.is_shutting_down()` at each step boundary. On shutdown it runs `_cancelled()` — `rebase --abort`, `merge --abort`, `checkout -f <base>` — so an interrupted merge leaves the repo on its base branch instead of orphaned mid-rebase
   4. On merge success: `worktree_mgr.remove()` (deletes branch), `store.set_completed()`
   5. On merge failure with retries left: keeps branch, sets task back to pending
 - **Subtask path:** namespaces IDs as `{parent}/{subtask}`, inherits parent deps, `store.add_runtime_task()`, marks parent `decomposed`
@@ -143,6 +144,7 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | **Merge** | `orchestrator/merge.py` | Rebase + fast-forward merge; spawns a "merge agent" Claude to resolve conflicts |
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
 | **Verification** | `verify.py` | Runs a task's verification command under a hard timeout, in its own process group |
+| **Process registry** | `procs.py` | Tracks live child process groups so shutdown can kill executor-thread work |
 | **Scan** | `scan/scanner.py` | Codebase documentation generation via Claude CLI |
 | **Display** | `display/live.py`, `display/status.py`, `display/tools.py` | Rich terminal UI with 4Hz refresh, dependency-layered tree, live action tailing, tool summaries |
 
@@ -195,6 +197,7 @@ as an unexplained hang:
 | `docs/generator.py` | Documentation tree generation |
 | `scan/scanner.py` | Codebase documentation scanner |
 | `verify.py` | Verification command runner (timeout, process-group kill, output logging) |
+| `procs.py` | Live child process registry; `shutdown()` kills every tracked process group |
 | `playground/generator.py` | Self-testing playground spec |
 
 ---

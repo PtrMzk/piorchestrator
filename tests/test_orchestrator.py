@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from po import procs
 from po.db.connection import init_db
 from po.db.queries import AgentResult, SqliteTaskStore
 from po.orchestrator.loop import OrchestratorLoop
@@ -450,3 +452,65 @@ class TestPrepareRepo:
         assert result.success is True
         assert result.needed_agent_resolution is False
         assert ".vite" in (git_repo / ".gitignore").read_text()
+
+
+class TestShutdownLeavesTasksResumable:
+    """An interrupted task is not a failed task."""
+
+    @staticmethod
+    def _loop_with_task(tmp_path: Path, sample_spec: ProjectSpec) -> OrchestratorLoop:
+        project_root = tmp_path / "project"
+        project_root.mkdir(exist_ok=True)
+        store = SqliteTaskStore(init_db(project_root / ".po" / "state.db"))
+        store.save_spec(sample_spec)
+        return OrchestratorLoop(
+            store=store,
+            project_root=project_root,
+            worktree_manager=MockWorktreeProvider(tmp_path / "wt"),
+            agent_runner=MockAgentRunner(),
+            merger=MockMergeStrategy(),
+            max_retries=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_result_during_shutdown_stays_pending(
+        self, tmp_path: Path, sample_spec: ProjectSpec
+    ) -> None:
+        """Not `failed`: the user stopped it, and the next run should resume it."""
+        orch = self._loop_with_task(tmp_path, sample_spec)
+        task_id = sample_spec.tasks[0].id
+        orch._shutting_down = True
+
+        await orch._process_result(AgentResult(task_id=task_id, success=True))
+
+        assert orch.store.get_task(task_id)["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_no_merge_is_started_during_shutdown(
+        self, tmp_path: Path, sample_spec: ProjectSpec
+    ) -> None:
+        """Starting a merge we are about to kill just wedges the repo."""
+        orch = self._loop_with_task(tmp_path, sample_spec)
+        orch._shutting_down = True
+
+        await orch._process_result(
+            AgentResult(task_id=sample_spec.tasks[0].id, success=True)
+        )
+
+        assert orch.merger.merged == []
+
+    def test_shutdown_kills_tracked_processes(
+        self, tmp_path: Path, sample_spec: ProjectSpec
+    ) -> None:
+        """The signal handler reaches work that asyncio cancellation cannot."""
+        orch = self._loop_with_task(tmp_path, sample_spec)
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+        )
+        procs.register(proc)
+
+        orch._request_shutdown()
+
+        assert orch._shutting_down is True
+        assert proc.wait(timeout=10) is not None

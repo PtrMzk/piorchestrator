@@ -11,6 +11,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from po import procs
 from po.agent.launcher import AgentRunner, ClaudeCodeRunner
 from po.agent.prompt_builder import build_prompt
 from po.config import (
@@ -125,12 +126,21 @@ class OrchestratorLoop:
     def _request_shutdown(self) -> None:
         """Handle shutdown signal — cancel running tasks and shut down.
 
-        First signal: cancel all running tasks (subprocesses get terminated).
-        Second signal: force exit.
+        First signal: cancel all running tasks and kill every tracked child
+        process. Cancelling the asyncio tasks is enough for the agents, whose
+        subprocesses are awaited by those tasks — but not for a merge or a
+        verification command, which block an executor thread that cancellation
+        cannot reach. `procs.shutdown()` kills those directly; without it the
+        first Ctrl-C looks ignored and the interpreter later hangs joining the
+        executor on the way out of `asyncio.run()`.
+
+        Second signal: kill whatever registered since (the merge's own cleanup
+        commands), then force exit.
         """
         if self._shutting_down:
             # Second signal — force exit
             logger.info("Force shutdown requested")
+            procs.shutdown()
             import os
             os._exit(1)
         else:
@@ -141,6 +151,10 @@ class OrchestratorLoop:
             self._shutting_down = True
             for task in self._running_tasks.values():
                 task.cancel()
+            killed = procs.shutdown()
+            if killed:
+                logger.info("Killed %d in-flight subprocess group(s)", killed)
+            self._emit("shutdown", "", f"{len(self._running_tasks)} task(s) cancelled")
 
     async def _loop(self) -> None:
         """Core loop: find ready tasks, launch agents, collect results, merge."""
@@ -358,10 +372,24 @@ class OrchestratorLoop:
 
         return result
 
+    def _abandon_for_shutdown(self, task_id: str) -> None:
+        """Park an interrupted task as pending so the next run picks it up.
+
+        A shutdown is not the task's fault, so it must not be recorded as a
+        failure or burn the merge's retry budget.
+        """
+        logger.info("Shutdown interrupted task %s, leaving it pending", task_id)
+        self.store.set_status(task_id, STATUS_PENDING)
+
     async def _process_result(self, result: AgentResult) -> None:
         """Process an agent result: handle subtasks, merge, or fail."""
         task = self.store.get_task(result.task_id)
         if task is None:
+            return
+
+        if self._shutting_down:
+            # Don't start a merge we are about to interrupt.
+            self._abandon_for_shutdown(result.task_id)
             return
 
         if result.success:
@@ -375,6 +403,9 @@ class OrchestratorLoop:
                 preverify_fail = await self._run_preverify(
                     verification, result.task_id, Path(worktree_path),
                 )
+                if self._shutting_down:
+                    self._abandon_for_shutdown(result.task_id)
+                    return
                 if preverify_fail is not None:
                     attempt = int(task["attempt"])
                     if attempt <= self.max_retries:
@@ -416,6 +447,11 @@ class OrchestratorLoop:
                 verification=verification,
                 project_root=self.project_root,
             )
+
+            if self._shutting_down:
+                # The merge was interrupted, not attempted and found wanting.
+                self._abandon_for_shutdown(result.task_id)
+                return
 
             if merge_result.success:
                 # Branch is merged — clean up worktree and branch
