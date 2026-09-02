@@ -19,6 +19,15 @@ class TestSqliteTaskStore:
         assert project["project_name"] == "test-project"
         assert project["max_concurrency"] == 2
 
+    def test_clear_discards_everything(
+        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+    ) -> None:
+        store.save_spec(sample_spec)
+        store.set_completed("task-a", cost_usd=0.1, duration_ms=1, agent_result="x")
+        store.clear()
+        assert store.get_project() is None
+        assert store.get_all_tasks() == []
+
     def test_save_spec_persists_tasks(
         self, store: SqliteTaskStore, sample_spec: ProjectSpec,
     ) -> None:

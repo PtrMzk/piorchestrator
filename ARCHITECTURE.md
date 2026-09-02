@@ -27,6 +27,7 @@ Loads and validates a spec (checks for duplicate IDs, cycles, missing dependenci
 - `--scaffold` — generate stub files for all `output_files`
 - `--generate-docs` — generate documentation tree (`CLAUDE.md`, `SYSTEM_DESIGN.md`, component docs)
 - `--playground` — generates a self-testing calculator spec to demo the tool
+- `--fresh` — discard the existing plan in `.po/state.db` before saving (also accepted by `po init`)
 
 Both are off by default because they write untracked files into the project root. Task branches are cut from HEAD, so agents never see an uncommitted stub, and an untracked file at an agent's output path makes git refuse the merge. When either flag is used, `po plan` tells the user to commit the files before `po run`.
 
@@ -35,8 +36,9 @@ Both are off by default because they write untracked files into the project root
 2. `spec/loader.py:JsonSpecLoader.load()` parses JSON → `spec/schema.py:ProjectSpec.from_dict()` → `spec.validate()` (duplicate IDs, missing dep refs, cycle detection via `graph/resolver.py:topological_sort`)
 3. `graph/resolver.py:get_execution_plan()` groups tasks into BFS layers where each layer's deps are satisfied by prior layers — displayed via `display/status.py:format_execution_plan()`
 4. `db/connection.py:init_db()` opens SQLite in WAL mode, runs DDL from `db/models.py`
-5. `db/queries.py:SqliteTaskStore.save_spec()` upserts project metadata + all tasks (preserves runtime state for re-plans via `ON CONFLICT DO UPDATE`)
-6. With `--scaffold` / `--generate-docs`: `scaffold/generator.py:generate_scaffolds()` creates stub files; `docs/generator.py:generate_doc_tree()` creates doc files; a reminder to commit them is printed
+5. `cli.py:_plan_conflicts()` — refuses (exit 1) to save over an existing plan when the spec is for a **different `project_name`**, or when it **redefines a task that already finished** (description, dependencies, context/output files or verification changed on a task in a terminal status). Both would be silently wrong: the upsert below keeps runtime state by id, so a second feature whose tasks reuse ids like `setup` would have them skipped and `po run` would report "all tasks completed" having done nothing. Re-planning the identical spec, or editing tasks that have not run, passes. `--fresh` calls `store.clear()` instead
+6. `db/queries.py:SqliteTaskStore.save_spec()` upserts project metadata + all tasks (preserves runtime state for re-plans via `ON CONFLICT DO UPDATE`)
+7. With `--scaffold` / `--generate-docs`: `scaffold/generator.py:generate_scaffolds()` creates stub files; `docs/generator.py:generate_doc_tree()` creates doc files; a reminder to commit them is printed
 
 ### 3. `po run [spec.json]` — The Orchestration Loop (core business logic)
 This is the heart of the system. The async loop:

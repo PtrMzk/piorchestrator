@@ -292,6 +292,83 @@ class TestCmdPlan:
         conn.close()
 
 
+class TestPlanOverExistingPlan:
+    """A new spec over an old database must not silently skip finished tasks."""
+
+    def _plan(self, tmp_path: Path, spec_dict: dict, fresh: bool = False) -> None:
+        spec_file = tmp_path / f"spec-{fresh}.json"
+        spec_file.write_text(json.dumps(spec_dict))
+        cmd_plan(_make_namespace(
+            spec_file=spec_file, project_root=tmp_path, playground=False,
+            scaffold=False, generate_docs=False, fresh=fresh,
+        ))
+
+    def _complete(self, tmp_path: Path, task_id: str) -> None:
+        conn = init_db(state_db_path(tmp_path))
+        SqliteTaskStore(conn).set_completed(task_id, cost_usd=0.0, duration_ms=1, agent_result="")
+        conn.close()
+
+    def _status(self, tmp_path: Path, task_id: str) -> str | None:
+        conn = init_db(state_db_path(tmp_path))
+        task = SqliteTaskStore(conn).get_task(task_id)
+        conn.close()
+        return None if task is None else str(task["status"])
+
+    def test_different_project_is_refused(self, tmp_path: Path) -> None:
+        self._plan(tmp_path, SAMPLE_SPEC_DICT)
+        self._complete(tmp_path, "task-a")
+        other = {**SAMPLE_SPEC_DICT, "project_name": "second-feature"}
+        with pytest.raises(SystemExit):
+            self._plan(tmp_path, other)
+        # Old plan untouched
+        assert self._status(tmp_path, "task-a") == "completed"
+
+    def test_redefined_finished_task_is_refused(self, tmp_path: Path) -> None:
+        """Same project name, but `task-a` finished and now means something else."""
+        self._plan(tmp_path, SAMPLE_SPEC_DICT)
+        self._complete(tmp_path, "task-a")
+        changed = json.loads(json.dumps(SAMPLE_SPEC_DICT))
+        changed["tasks"][0]["output_files"] = ["something_else.py"]
+        with pytest.raises(SystemExit):
+            self._plan(tmp_path, changed)
+
+    def test_redefined_pending_task_is_fine(self, tmp_path: Path) -> None:
+        """Editing a task that has not run yet is the ordinary re-plan case."""
+        self._plan(tmp_path, SAMPLE_SPEC_DICT)
+        self._complete(tmp_path, "task-a")
+        changed = json.loads(json.dumps(SAMPLE_SPEC_DICT))
+        changed["tasks"][1]["description"] = "Second task, reworded"
+        self._plan(tmp_path, changed)
+        assert self._status(tmp_path, "task-a") == "completed"
+
+    def test_identical_replan_is_fine(self, tmp_path: Path) -> None:
+        self._plan(tmp_path, SAMPLE_SPEC_DICT)
+        self._complete(tmp_path, "task-a")
+        self._plan(tmp_path, SAMPLE_SPEC_DICT)
+        assert self._status(tmp_path, "task-a") == "completed"
+
+    def test_fresh_discards_old_plan(self, tmp_path: Path) -> None:
+        self._plan(tmp_path, SAMPLE_SPEC_DICT)
+        self._complete(tmp_path, "task-a")
+        other = {
+            "project_name": "second-feature",
+            "tasks": [{"id": "task-a", "description": "Reused id", "output_files": ["x.py"]}],
+        }
+        self._plan(tmp_path, other, fresh=True)
+        assert self._status(tmp_path, "task-a") == "pending"
+        assert self._status(tmp_path, "task-b") is None
+
+    def test_parser_accepts_fresh(self) -> None:
+        with patch("sys.argv", ["po", "plan", "spec.json", "--fresh"]), \
+                patch("po.cli.cmd_plan") as mock_plan:
+            main()
+        assert mock_plan.call_args[0][0].fresh is True
+        with patch("sys.argv", ["po", "init", "desc", "--fresh"]), \
+                patch("po.cli.cmd_init") as mock_init:
+            main()
+        assert mock_init.call_args[0][0].fresh is True
+
+
 # ──────────────── cmd_run tests ────────────────
 
 

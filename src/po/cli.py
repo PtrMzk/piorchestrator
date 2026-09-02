@@ -94,6 +94,14 @@ def main() -> None:
         help="Generate a self-testing playground spec for quick verification",
     )
     plan_parser.add_argument(
+        "--fresh", action="store_true",
+        help=(
+            "Discard the existing plan in .po/state.db before saving this one. "
+            "Required to plan a different project, or to redefine tasks that "
+            "already finished, in the same project root"
+        ),
+    )
+    plan_parser.add_argument(
         "--scaffold", action=argparse.BooleanOptionalAction, default=False,
         help=(
             "Generate stub files for all output_files in the spec (default: off). "
@@ -221,6 +229,10 @@ def main() -> None:
         "--project-root", type=Path, default=Path("."),
         help="Project root directory",
     )
+    init_parser.add_argument(
+        "--fresh", action="store_true",
+        help="Discard the existing plan in .po/state.db (see 'po plan --fresh')",
+    )
 
     args = parser.parse_args()
     _configure_logging(
@@ -304,6 +316,15 @@ def cmd_plan(args: argparse.Namespace) -> None:
     db_path = state_db_path(project_root)
     conn = init_db(db_path)
     store = SqliteTaskStore(conn)
+    if getattr(args, "fresh", False):
+        store.clear()
+    else:
+        conflicts = _plan_conflicts(store, spec)
+        if conflicts:
+            for line in conflicts:
+                logger.error("%s", line)
+            conn.close()
+            sys.exit(1)
     store.save_spec(spec)
     conn.close()
 
@@ -337,6 +358,63 @@ def cmd_plan(args: argparse.Namespace) -> None:
             "\nCommit these files before 'po run' — task branches only see "
             "committed files, and untracked ones block merges."
         )
+
+
+_TASK_DEFINITION_FIELDS = (
+    "description", "dependencies", "context_files", "output_files", "verification",
+)
+_TASK_LIST_FIELDS = frozenset({"dependencies", "context_files", "output_files"})
+
+
+def _plan_conflicts(store: SqliteTaskStore, spec: Any) -> list[str]:
+    """Explain why saving `spec` over the existing plan would be silently wrong.
+
+    `save_spec` upserts by task id and keeps runtime state, which is what a
+    re-plan of the *same* spec wants: completed tasks stay completed. The same
+    behaviour is a trap for a *new* spec in the same project root — a second
+    feature whose tasks reuse ids like `setup` — because every id that already
+    finished is skipped and `po run` reports "all tasks completed" having done
+    nothing. Returns an empty list when the save is safe.
+    """
+    project = store.get_project()
+    if project is None:
+        return []
+    existing = {str(t["id"]): t for t in store.get_all_tasks()}
+    if not existing:
+        return []
+
+    if project["project_name"] != spec.project_name:
+        finished = sum(1 for t in existing.values() if t["status"] in TERMINAL_STATUSES)
+        return [
+            f"This project root already holds a plan for '{project['project_name']}' "
+            f"({len(existing)} tasks, {finished} finished); the spec is for "
+            f"'{spec.project_name}'.",
+            "Planning on top of it would silently skip every task id that already "
+            "finished. Use 'po plan --fresh' to discard the old plan, or a different "
+            "--project-root.",
+        ]
+
+    redefined: list[str] = []
+    for task in spec.tasks:
+        row = existing.get(task.id)
+        if row is None or row["status"] not in TERMINAL_STATUSES:
+            continue
+        for field in _TASK_DEFINITION_FIELDS:
+            stored = row[field]
+            if field in _TASK_LIST_FIELDS and isinstance(stored, str):
+                stored = json.loads(stored)
+            if (stored or "") != (getattr(task, field) or ""):
+                redefined.append(f"{task.id} ({row['status']}, {field} changed)")
+                break
+    if not redefined:
+        return []
+    shown = "\n".join(f"  {r}" for r in redefined)
+    return [
+        "The spec redefines tasks that already finished, and finished tasks never run "
+        f"again:\n{shown}",
+        "Give them new ids, or use 'po plan --fresh' to discard the old plan and start "
+        "over.",
+    ]
 
 
 def _live_event_printer(event: str, task_id: str, detail: str) -> None:
@@ -806,6 +884,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         playground=False,
         scaffold=False,
         generate_docs=False,
+        fresh=getattr(args, "fresh", False),
     )
     cmd_plan(plan_args)
     print()

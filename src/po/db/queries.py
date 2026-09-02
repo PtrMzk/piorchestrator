@@ -25,6 +25,7 @@ class TaskStore(Protocol):
     """Protocol for task state persistence."""
 
     def save_spec(self, spec: ProjectSpec) -> None: ...
+    def clear(self) -> None: ...
     def upsert_task(self, task: TaskSpec, source: str) -> None: ...
     def get_task(self, task_id: str) -> dict[str, Any] | None: ...
     def get_all_tasks(self) -> list[dict[str, Any]]: ...
@@ -160,6 +161,16 @@ class SqliteTaskStore:
             "SELECT * FROM tasks ORDER BY priority DESC, id"
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def clear(self) -> None:
+        """Discard the whole plan: every task (spec and runtime) and the project row.
+
+        For `po plan --fresh`. Git branches kept by failed tasks are not touched;
+        `po clean` reaps those.
+        """
+        self.conn.execute("DELETE FROM tasks")
+        self.conn.execute("DELETE FROM project")
+        self.conn.commit()
 
     def get_project(self) -> dict[str, Any] | None:
         """Get project metadata."""
