@@ -85,6 +85,14 @@ class TestCleanWorktree:
     def test_not_a_repo(self, tmp_path: Path) -> None:
         assert check_clean_worktree(tmp_path) is None
 
+    def test_modified_gitignore_is_pos_own_business(self, git_repo: Path) -> None:
+        """`po plan` appends to a tracked .gitignore; `po run` commits it next."""
+        (git_repo / ".gitignore").write_text("build/\n")
+        _git(["add", ".gitignore"], git_repo)
+        _git(["commit", "-m", "ignore"], git_repo)
+        (git_repo / ".gitignore").write_text("build/\n.po/\n")
+        assert check_clean_worktree(git_repo) is None
+
 
 class TestOutputCollisions:
     def test_untracked_output_file(self, git_repo: Path) -> None:
@@ -106,6 +114,13 @@ class TestOutputCollisions:
         (git_repo / "build").mkdir()
         (git_repo / "build" / "out.js").write_text("x")
         assert check_output_collisions(git_repo, ["build/out.js"]) is None
+
+    def test_untracked_gitignore_written_by_po_is_fine(self, git_repo: Path) -> None:
+        """The exact false positive: a spec whose init task lists .gitignore as an
+        output, in a repo where `po plan` just wrote one. `_prepare_repo` commits
+        it before any branch exists, so it never collides with anything."""
+        (git_repo / ".gitignore").write_text(".po/\n")
+        assert check_output_collisions(git_repo, [".gitignore", "package.json"]) is None
 
     def test_no_outputs(self, git_repo: Path) -> None:
         (git_repo / "anything.txt").write_text("x")

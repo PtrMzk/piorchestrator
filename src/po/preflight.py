@@ -14,6 +14,12 @@ import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
+# po's own file. `po plan` writes it and `OrchestratorLoop._prepare_repo`
+# commits it (with a pathspec, nothing else) before the first branch is cut,
+# which happens *after* pre-flight. Flagging it here blames the user for a file
+# po created seconds earlier.
+_OWN_FILES = frozenset({".gitignore"})
+
 
 def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -64,7 +70,10 @@ def check_clean_worktree(project_root: Path) -> str | None:
     if not _is_git_repo(project_root):
         return None
     result = _git(["status", "--porcelain", "--untracked-files=no"], project_root)
-    dirty = [line for line in result.stdout.splitlines() if line.strip()]
+    dirty = [
+        line for line in result.stdout.splitlines()
+        if line.strip() and line[3:].strip() not in _OWN_FILES
+    ]
     if not dirty:
         return None
     shown = "\n".join(f"  {line}" for line in dirty[:10])
@@ -87,7 +96,7 @@ def check_output_collisions(
     """
     if not _is_git_repo(project_root):
         return None
-    wanted = {f for f in output_files if f}
+    wanted = {f for f in output_files if f} - _OWN_FILES
     if not wanted:
         return None
     result = _git(["ls-files", "--others", "--exclude-standard"], project_root)
