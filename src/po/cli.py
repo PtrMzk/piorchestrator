@@ -212,6 +212,13 @@ def main() -> None:
     logs_parser.add_argument("task_id", type=str, help="Task ID")
     logs_parser.add_argument("--raw", action="store_true", help="Show raw JSONL")
     logs_parser.add_argument(
+        "--attempt",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Show an earlier attempt's log (1 = first attempt); default is the latest",
+    )
+    logs_parser.add_argument(
         "--tail",
         type=int,
         default=0,
@@ -709,10 +716,17 @@ def cmd_logs(args: argparse.Namespace) -> None:
     """Show agent logs for a task."""
     project_root: Path = args.project_root.resolve()
     log_dir = logs_dir(project_root)
-    log_file = log_dir / f"{args.task_id}.jsonl"
+    attempt = getattr(args, "attempt", 0)
+    if attempt > 0:
+        log_file = log_dir / f"{args.task_id}.attempt{attempt}.jsonl"
+    else:
+        log_file = log_dir / f"{args.task_id}.jsonl"
 
     if not log_file.exists():
-        logger.error("No logs found for task '%s'.", args.task_id)
+        if attempt > 0:
+            logger.error("No logs found for attempt %d of task '%s'.", attempt, args.task_id)
+        else:
+            logger.error("No logs found for task '%s'.", args.task_id)
         sys.exit(1)
 
     content = log_file.read_text(encoding="utf-8")

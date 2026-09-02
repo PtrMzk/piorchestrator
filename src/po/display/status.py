@@ -36,7 +36,9 @@ def format_status_table(tasks: list[dict[str, Any]]) -> str:
         error = task.get("error_message")
         if error and status == "failed":
             err_trunc = str(error)[:72]
-            lines.append(f"{'':>14}└ {err_trunc}")
+            attempt = int(task.get("attempt") or 0)
+            suffix = f"  (attempt {attempt})" if attempt else ""
+            lines.append(f"{'':>14}└ {err_trunc}{suffix}")
 
     return "\n".join(lines)
 

@@ -47,7 +47,7 @@ This is the heart of the system. The async loop:
 2. **Filters for output file overlap** — prevents two tasks writing the same file concurrently
 3. **Creates a git worktree** per task (branch: `po/{task_id}`, directory: `.po/worktrees/{task_id}/`), then runs the spec's `setup` command in it (`npm ci`, `uv sync`) — a worktree is a clean checkout and dependency directories are gitignored, so without this every task starts with nothing installed. Logs to `.po/logs/setup-{task_id}.log`. Best-effort: a failure is reported but does not fail the task, because the bootstrap task that writes `package.json` necessarily runs before `npm ci` can succeed
 4. **Launches Claude Code** as a subprocess in that worktree with a carefully built prompt containing the task description, global context, reference file contents, expected outputs, and verification command
-5. **Streams agent output** to `.po/logs/{task_id}.jsonl`, parsing for cost/session data
+5. **Streams agent output** to `.po/logs/{task_id}.jsonl`, parsing for cost/session data. A retry moves the previous attempt's log to `{task_id}.attempt{N}.jsonl` first, so the evidence of why it failed survives
 6. **Processes results** when the agent finishes:
    - **Success**: detaches worktree, rebases branch onto main, fast-forward merges, runs verification. If verification fails, reverts.
    - **Subtasks created** (agent wrote `.po-subtasks.json`): namespaces subtask IDs under the parent, inherits dependencies, adds them to the DB, marks parent as `decomposed`
@@ -61,7 +61,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
 1. If a spec file is given, auto-runs `cmd_plan` first
 2. Opens the DB, reads project metadata + checks for non-terminal tasks
 3. **Pre-flight** (`preflight.py:run_preflight`) — refuses to start, with one actionable sentence per problem, if: `claude` is not on PATH; git has no author identity (`git var GIT_AUTHOR_IDENT`); tracked files have uncommitted changes (the merge's `git checkout -f` would discard them; `--allow-dirty` skips this one check); or an untracked file sits at a pending task's output path (git would refuse the merge). Each of these used to surface late and badly: as a traceback from `git commit`, as every task failing after burning its retries, or as work silently destroyed
-4. If TTY, creates `display/live.py:LiveDisplay` (Rich Live at 4Hz); otherwise uses a simple `_live_event_printer` callback
+4. If TTY, creates `display/live.py:LiveDisplay` (Rich Live at 4Hz); otherwise uses a simple `_live_event_printer` callback. Failed lines show the attempt count and, when escalation kicked in, the model ladder step (`(attempt 2, sonnet → opus)`); `po status` shows the attempt count too
 5. Constructs `orchestrator/loop.py:OrchestratorLoop` with store, worktree manager, agent runner, merger (all protocol-based, defaulting to real implementations)
 6. Spawns `caffeinate -i -s` to prevent macOS sleep, then `asyncio.run(orchestrator.run())`
 
@@ -105,11 +105,11 @@ Key design: tasks that write to the same files are serialized, while tasks with 
 ### 4. `po status` / `po cost` / `po logs <id>` — Monitoring
 - **status**: table of all tasks with their state, cost, and any error messages
 - **cost**: per-task and total cost summary
-- **logs**: streams the agent's JSONL log (supports `--raw` and `--tail`)
+- **logs**: streams the agent's JSONL log (supports `--raw`, `--tail`, and `--attempt N` to read an earlier attempt's rotated log)
 
 **Code walkthrough:**
 - All three: `cli.py` → open DB → `SqliteTaskStore.get_all_tasks()` → formatter from `display/status.py`
-- `cmd_logs`: reads `.po/logs/{task_id}.jsonl` directly, parses each JSON line by `type` field (`assistant` → text/tool_use blocks, `tool_result` → truncated output, `result` → cost/duration summary). Applies `--tail` slicing. `--raw` skips parsing and dumps lines verbatim
+- `cmd_logs`: reads `.po/logs/{task_id}.jsonl` directly, parses each JSON line by `type` field (`assistant` → text/tool_use blocks, `tool_result` → truncated output, `result` → cost/duration summary). Applies `--tail` slicing. `--raw` skips parsing and dumps lines verbatim. `--attempt N` reads `{task_id}.attempt{N}.jsonl` instead of the latest log
 
 ### 5. `po reset [--task ID]` — Recovery
 Resets `failed`/`cancelled` tasks back to `pending`, cascading to dependents. Preserves the git branch so retry agents can build on previous work.

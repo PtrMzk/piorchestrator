@@ -26,6 +26,20 @@ _STATUS_STYLES: dict[str, tuple[str, str]] = {
 }
 
 
+def _attempt_summary(task: dict[str, Any]) -> str:
+    """'(attempt 2, sonnet → opus)' — how many tries a task got and on what model.
+
+    Without this a failed line looks like a single shot; the retry and the
+    escalated model that ran are otherwise only visible in scrolled-off events.
+    """
+    attempt = int(task.get("attempt") or 0)
+    parts = [f"attempt {attempt}" if attempt else "attempt ?"]
+    model = task.get("model")
+    if model:
+        parts.append(str(model))
+    return f"({', '.join(parts)})"
+
+
 class LiveDisplay:
     """Rich Live display that acts as an EventCallback (event, task_id, detail) -> None."""
 
@@ -51,6 +65,7 @@ class LiveDisplay:
                 "cost_usd": task.get("cost_usd"),
                 "error_message": task.get("error_message"),
                 "dependencies": deps,
+                "attempt": int(task.get("attempt") or 0),
             }
 
     def start(self) -> None:
@@ -91,6 +106,9 @@ class LiveDisplay:
 
         if event == "task_launched":
             task_state["status"] = "running"
+            task_state["attempt"] = int(task_state.get("attempt") or 0) + 1
+        elif event == "model_escalated":
+            task_state["model"] = detail
         elif event == "task_completed":
             task_state["status"] = "completed"
             if detail:
@@ -222,6 +240,7 @@ class LiveDisplay:
             if error:
                 truncated = str(error)[:60]
                 label.append(f"  {truncated}", style="dim red")
+            label.append(f"  {_attempt_summary(task)}", style="dim")
 
         return parent.add(label)
 

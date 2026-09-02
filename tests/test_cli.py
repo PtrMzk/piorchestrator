@@ -924,3 +924,28 @@ class TestEnsurePoGitignore:
         content = (tmp_path / ".gitignore").read_text()
         assert content.count(".po/") == 1
         assert "build/" in content
+
+    def test_attempt_reads_rotated_log(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        log_dir = tmp_path / ".po" / "logs"
+        log_dir.mkdir(parents=True)
+        (log_dir / "task-x.attempt1.jsonl").write_text('{"type":"result","result":"first"}\n')
+        (log_dir / "task-x.jsonl").write_text('{"type":"result","result":"second"}\n')
+
+        args = _make_namespace(project_root=tmp_path, task_id="task-x", raw=True, tail=0, attempt=1)
+        cmd_logs(args)
+        assert "first" in capsys.readouterr().out
+
+        args = _make_namespace(project_root=tmp_path, task_id="task-x", raw=True, tail=0, attempt=0)
+        cmd_logs(args)
+        assert "second" in capsys.readouterr().out
+
+    def test_missing_attempt_exits(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / ".po" / "logs"
+        log_dir.mkdir(parents=True)
+        (log_dir / "task-x.jsonl").write_text('{"type":"result"}\n')
+
+        args = _make_namespace(project_root=tmp_path, task_id="task-x", raw=True, tail=0, attempt=3)
+        with pytest.raises(SystemExit):
+            cmd_logs(args)

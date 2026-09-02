@@ -59,6 +59,11 @@ class TestFormatStatusTable:
         result = format_status_table([task])
         assert "└ Something broke" in result
 
+    def test_failed_task_shows_attempt_count(self) -> None:
+        task = _make_task(status="failed", error_message="Something broke", attempt=2)
+        result = format_status_table([task])
+        assert "└ Something broke  (attempt 2)" in result
+
     def test_failed_task_no_error_no_extra_line(self) -> None:
         task = _make_task(status="failed")
         result = format_status_table([task])
@@ -205,6 +210,17 @@ class TestFormatProgressSummary:
 # ──────────────── LiveDisplay tests ────────────────
 
 
+def _render(tree: Any) -> str:
+    """Render a Rich renderable to plain text."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    console = Console(width=200, record=True, file=StringIO())
+    console.print(tree)
+    return console.export_text()
+
+
 def _mock_store(tasks: list[dict[str, Any]] | None = None) -> MagicMock:
     """Create a mock SqliteTaskStore with get_all_tasks returning given tasks."""
     store = MagicMock()
@@ -319,6 +335,28 @@ class TestLiveDisplayEventUpdatesState:
         display("task_failed", "task-a", "Boom")
         assert display._tasks["task-a"]["status"] == "failed"
         assert display._tasks["task-a"]["error_message"] == "Boom"
+
+    def test_failed_line_shows_attempts_and_escalated_model(self, tmp_path: Path) -> None:
+        store = _mock_store([_make_task(id="task-a", status="pending", attempt=0)])
+        display = LiveDisplay(store, tmp_path)
+        display("task_launched", "task-a", "")
+        display("task_retrying", "task-a", "attempt 1/1")
+        display("task_launched", "task-a", "")
+        display("model_escalated", "task-a", "sonnet → opus")
+        display("task_failed", "task-a", "Agent exited with code -9")
+
+        rendered = _render(display._build_tree())
+        assert "Agent exited with code -9" in rendered
+        assert "(attempt 2, sonnet → opus)" in rendered
+
+    def test_failed_line_without_escalation_shows_attempt_only(self, tmp_path: Path) -> None:
+        store = _mock_store([_make_task(id="task-a", status="pending", attempt=0)])
+        display = LiveDisplay(store, tmp_path)
+        display("task_launched", "task-a", "")
+        display("task_failed", "task-a", "Boom")
+
+        rendered = _render(display._build_tree())
+        assert "Boom  (attempt 1)" in rendered
 
     def test_decomposed_event(self, tmp_path: Path) -> None:
         store = _mock_store([_make_task(id="task-a", status="running")])

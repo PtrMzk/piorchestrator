@@ -44,6 +44,21 @@ class AgentRunner(Protocol):
     ) -> AgentResult: ...
 
 
+def _rotate_log(log_file: Path) -> None:
+    """Move a previous attempt's log aside instead of overwriting it.
+
+    Retries would otherwise erase the only evidence of why the first attempt
+    failed. The current attempt always writes ``<task>.jsonl``; earlier ones
+    are kept as ``<task>.attempt1.jsonl``, ``<task>.attempt2.jsonl``, ...
+    """
+    if not log_file.exists():
+        return
+    n = 1
+    while (rotated := log_file.with_name(f"{log_file.stem}.attempt{n}.jsonl")).exists():
+        n += 1
+    log_file.rename(rotated)
+
+
 class ClaudeCodeRunner:
     """Run Claude Code CLI via subprocess."""
 
@@ -63,6 +78,7 @@ class ClaudeCodeRunner:
         # Prepare log file
         log_dir = ensure_logs_dir(project_root)
         log_file = log_dir / f"{task_id}.jsonl"
+        _rotate_log(log_file)
 
         # Drop nesting markers only — auth vars must survive (see agent_env)
         env = agent_env()

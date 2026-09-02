@@ -442,3 +442,24 @@ class TestAgentCancellation:
         )
 
         assert procs.shutdown() == 0
+
+
+class TestLogRotation:
+    @pytest.mark.asyncio
+    async def test_retry_keeps_previous_attempts_log(self, tmp_path: Path) -> None:
+        worktree = tmp_path / "wt"
+        worktree.mkdir()
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        runner = ClaudeCodeRunner()
+
+        for text in ("first", "second", "third"):
+            stdout = _jsonl({"type": "result", "result": text})
+            mock_proc = _make_mock_process(stdout=stdout, returncode=1)
+            with patch("po.agent.launcher.asyncio.create_subprocess_exec", return_value=mock_proc):
+                await runner.run("t1", "do stuff", worktree, "sonnet", project_root=project_root)
+
+        log_dir = project_root / ".po" / "logs"
+        assert "third" in (log_dir / "t1.jsonl").read_text()
+        assert "first" in (log_dir / "t1.attempt1.jsonl").read_text()
+        assert "second" in (log_dir / "t1.attempt2.jsonl").read_text()
