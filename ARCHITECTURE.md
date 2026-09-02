@@ -9,7 +9,7 @@ Piorchestrator (`po`) is a **multi-agent orchestrator** that coordinates paralle
 ## Major Entry Points (CLI Commands)
 
 ### 1. `po init <description>` — Spec Generation & Planning (combined)
-Converts a plain-English project description into a structured JSON spec, then automatically validates, plans, scaffolds, and generates docs (i.e. runs `po plan` logic). In interactive terminals, uses a two-phase flow: first generates a human-readable outline for user review, then produces the full JSON spec after approval. Users can provide feedback to revise the outline before committing.
+Converts a plain-English project description into a structured JSON spec, then automatically validates and plans it (i.e. runs `po plan` logic, without scaffolds or docs). In interactive terminals, uses a two-phase flow: first generates a human-readable outline for user review, then produces the full JSON spec after approval. Users can provide feedback to revise the outline before committing.
 
 **Code walkthrough (interactive mode):**
 1. `cli.py:cmd_init` → calls `init/generator.py:generate_outline(description, model, feedback=None, session_id=None)`
@@ -18,15 +18,17 @@ Converts a plain-English project description into a structured JSON spec, then a
 4. User reviews outline, types `y` to approve or provides feedback to revise — feedback revisions resume the same Claude session via `--resume <session_id>` to avoid re-reading the codebase
 5. On approval: `generate_spec_from_outline(description, outline, output, model)` builds a prompt combining the approved outline with `_spec_schema_instructions()` (JSON schema, constraints, example spec)
 6. `_invoke_claude()` generates JSON, `_extract_json()` strips fences, `ProjectSpec.from_dict()` validates
-7. Auto-runs `cmd_plan` logic: validation, execution plan display, DB persistence, scaffold generation, doc tree creation
+7. Auto-runs `cmd_plan` logic: validation, execution plan display, DB persistence
 
 **Non-interactive mode** (piped stdin): skips the outline review loop and generates the full spec directly via `generate_spec()`.
 
 ### 2. `po plan <spec.json>` — Validation & Planning
-Loads and validates a spec (checks for duplicate IDs, cycles, missing dependencies), persists it to a SQLite database (`.po/state.db`), and displays the execution plan as dependency layers. Scaffold and doc generation are on by default:
-- `--no-scaffold` — skip generating stub files for all `output_files`
-- `--no-generate-docs` — skip generating documentation tree (`CLAUDE.md`, `SYSTEM_DESIGN.md`, component docs)
+Loads and validates a spec (checks for duplicate IDs, cycles, missing dependencies), persists it to a SQLite database (`.po/state.db`), and displays the execution plan as dependency layers. Scaffold and doc generation are **opt-in**:
+- `--scaffold` — generate stub files for all `output_files`
+- `--generate-docs` — generate documentation tree (`CLAUDE.md`, `SYSTEM_DESIGN.md`, component docs)
 - `--playground` — generates a self-testing calculator spec to demo the tool
+
+Both are off by default because they write untracked files into the project root. Task branches are cut from HEAD, so agents never see an uncommitted stub, and an untracked file at an agent's output path makes git refuse the merge. When either flag is used, `po plan` tells the user to commit the files before `po run`.
 
 **Code walkthrough:**
 1. `cli.py:cmd_plan` — if `--playground`, calls `playground/generator.py:generate_playground()` to create a spec + seed files
@@ -34,7 +36,7 @@ Loads and validates a spec (checks for duplicate IDs, cycles, missing dependenci
 3. `graph/resolver.py:get_execution_plan()` groups tasks into BFS layers where each layer's deps are satisfied by prior layers — displayed via `display/status.py:format_execution_plan()`
 4. `db/connection.py:init_db()` opens SQLite in WAL mode, runs DDL from `db/models.py`
 5. `db/queries.py:SqliteTaskStore.save_spec()` upserts project metadata + all tasks (preserves runtime state for re-plans via `ON CONFLICT DO UPDATE`)
-6. Optionally: `scaffold/generator.py:generate_scaffolds()` creates stub files; `docs/generator.py:generate_doc_tree()` creates doc files
+6. With `--scaffold` / `--generate-docs`: `scaffold/generator.py:generate_scaffolds()` creates stub files; `docs/generator.py:generate_doc_tree()` creates doc files; a reminder to commit them is printed
 
 ### 3. `po run [spec.json]` — The Orchestration Loop (core business logic)
 This is the heart of the system. The async loop:

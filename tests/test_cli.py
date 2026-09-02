@@ -14,6 +14,7 @@ from po.cli import (
     _live_event_printer,
     cmd_clean,
     cmd_cost,
+    cmd_init,
     cmd_logs,
     cmd_plan,
     cmd_reset,
@@ -195,6 +196,36 @@ class TestCmdPlan:
 
         # Should have created the playground spec and saved to DB
         assert state_db_path(tmp_path).exists()
+
+    def test_scaffold_and_docs_default_off(self) -> None:
+        """Untracked stubs in the project root break merges, so both are opt-in."""
+        with patch("sys.argv", ["po", "plan", "spec.json"]), \
+                patch("po.cli.cmd_plan") as mock_plan:
+            main()
+        args = mock_plan.call_args[0][0]
+        assert args.scaffold is False
+        assert args.generate_docs is False
+
+    def test_init_auto_plan_does_not_scaffold(self, tmp_path: Path) -> None:
+        """`po init` must not leave untracked stubs that its own `po run` trips on."""
+        spec_file = tmp_path / "spec.json"
+
+        def fake_generate_spec(description, output, model, project_root=None):
+            output.write_text(json.dumps(SAMPLE_SPEC_DICT))
+            return output
+
+        args = _make_namespace(
+            description="x", output=spec_file, model="haiku", project_root=tmp_path,
+        )
+        with patch("po.cli.generate_spec", side_effect=fake_generate_spec), \
+                patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = False
+            cmd_init(args)
+
+        assert state_db_path(tmp_path).exists()
+        assert not (tmp_path / "file_a.py").exists()
+        assert not (tmp_path / "docs").exists()
+        assert not (tmp_path / "CLAUDE.md").exists()
 
     def test_scaffold_flag(self, tmp_path: Path) -> None:
         spec_file = tmp_path / "spec.json"

@@ -93,12 +93,15 @@ def main() -> None:
         help="Generate a self-testing playground spec for quick verification",
     )
     plan_parser.add_argument(
-        "--scaffold", action=argparse.BooleanOptionalAction, default=True,
-        help="Generate stub files for all output_files in the spec (default: on)",
+        "--scaffold", action=argparse.BooleanOptionalAction, default=False,
+        help=(
+            "Generate stub files for all output_files in the spec (default: off). "
+            "Commit them before 'po run': task branches only see committed files"
+        ),
     )
     plan_parser.add_argument(
-        "--generate-docs", action=argparse.BooleanOptionalAction, default=True,
-        help="Generate documentation tree (default: on)",
+        "--generate-docs", action=argparse.BooleanOptionalAction, default=False,
+        help="Generate documentation tree (default: off; commit it before 'po run')",
     )
 
     # po run
@@ -299,9 +302,11 @@ def cmd_plan(args: argparse.Namespace) -> None:
     print(f"Plan saved to {db_path}")
 
     # 7. Generate scaffolds if requested
+    generated_any = False
     if args.scaffold:
         created = generate_scaffolds(spec, project_root)
         if created:
+            generated_any = True
             print(f"\nGenerated {len(created)} scaffold files:")
             for p in created:
                 print(f"  {p.relative_to(project_root)}")
@@ -311,9 +316,19 @@ def cmd_plan(args: argparse.Namespace) -> None:
     # 8. Generate docs if requested
     if args.generate_docs:
         created = generate_doc_tree(spec, project_root)
+        generated_any = True
         print(f"\nGenerated {len(created)} documentation files:")
         for p in created:
             print(f"  {p.relative_to(project_root)}")
+
+    if generated_any:
+        # Task branches are cut from HEAD. An uncommitted stub that matches an
+        # agent's output file does not help the agent (it never sees it) and
+        # blocks the merge (git refuses to overwrite untracked files).
+        print(
+            "\nCommit these files before 'po run' — task branches only see "
+            "committed files, and untracked ones block merges."
+        )
 
 
 def _live_event_printer(event: str, task_id: str, detail: str) -> None:
@@ -344,8 +359,8 @@ def cmd_run(args: argparse.Namespace) -> None:
             spec_file=args.spec_file.resolve(),
             project_root=args.project_root,
             playground=False,
-            scaffold=True,
-            generate_docs=True,
+            scaffold=False,
+            generate_docs=False,
         )
         cmd_plan(plan_args)
         print()
@@ -764,8 +779,8 @@ def cmd_init(args: argparse.Namespace) -> None:
         spec_file=path.resolve(),
         project_root=args.project_root,
         playground=False,
-        scaffold=True,
-        generate_docs=True,
+        scaffold=False,
+        generate_docs=False,
     )
     cmd_plan(plan_args)
     print()
