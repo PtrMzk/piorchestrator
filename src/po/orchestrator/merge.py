@@ -101,7 +101,11 @@ class RebaseMerger:
         ).returncode == 0
 
     def _confirm_merged(
-        self, branch: str, base: str, project_root: Path, **extra: bool,
+        self,
+        branch: str,
+        base: str,
+        project_root: Path,
+        needed_agent_resolution: bool = False,
     ) -> MergeResult:
         """The one place a merge is allowed to report success.
 
@@ -115,7 +119,9 @@ class RebaseMerger:
             ["merge-base", "--is-ancestor", branch, base], project_root,
         )
         if check.returncode == 0:
-            return MergeResult(success=True, **extra)
+            return MergeResult(
+                success=True, needed_agent_resolution=needed_agent_resolution,
+            )
         logger.error(
             "Merge of %s reported success but %s does not contain it", branch, base,
         )
@@ -125,7 +131,7 @@ class RebaseMerger:
                 f"Merge did not land: '{base}' does not contain '{branch}' "
                 "after the merge steps completed"
             ),
-            **extra,
+            needed_agent_resolution=needed_agent_resolution,
         )
 
     def _run_git(self, args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
