@@ -143,7 +143,7 @@ Removes orphaned git worktrees that weren't properly cleaned up.
 | **Agent** | `agent/launcher.py`, `agent/prompt_builder.py` | Claude CLI subprocess management, prompt construction, cost/session parsing |
 | **Merge** | `orchestrator/merge.py` | Rebase + fast-forward merge; spawns a "merge agent" Claude to resolve conflicts |
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
-| **Verification** | `verify.py` | Runs a task's verification command under a hard timeout, in its own process group |
+| **Verification** | `verify.py` | Runs a task's verification command through a shell, under a hard timeout, in its own process group |
 | **Process registry** | `procs.py` | Tracks live child process groups so shutdown can kill executor-thread work |
 | **Scan** | `scan/scanner.py` | Codebase documentation generation via Claude CLI |
 | **Display** | `display/live.py`, `display/status.py`, `display/tools.py` | Rich terminal UI with 4Hz refresh, dependency-layered tree, live action tailing, tool summaries |
@@ -196,7 +196,7 @@ as an unexplained hang:
 | `scaffold/generator.py` | Stub file generation |
 | `docs/generator.py` | Documentation tree generation |
 | `scan/scanner.py` | Codebase documentation scanner |
-| `verify.py` | Verification command runner (timeout, process-group kill, output logging) |
+| `verify.py` | Verification command runner (shell execution, timeout, process-group kill, output logging) |
 | `procs.py` | Live child process registry; `shutdown()` kills every tracked process group |
 | `playground/generator.py` | Self-testing playground spec |
 

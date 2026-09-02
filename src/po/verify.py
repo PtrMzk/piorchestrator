@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,18 +38,26 @@ def run_verification(
     log_file: Path,
     timeout: float = DEFAULT_VERIFICATION_TIMEOUT_S,
 ) -> VerificationOutcome:
-    """Run `command` in `cwd`, log its full output, and enforce `timeout`.
+    """Run `command` in `cwd` **through a shell**, log its output, enforce `timeout`.
 
-    Specs routinely name verification commands that never exit on their own —
-    `npm run dev`, `vite`, a stray `playwright test --ui`. Without a timeout one
+    The shell is load-bearing, not a convenience. Specs overwhelmingly write
+    verification as a compound gate — `npx tsc --noEmit && npm run build`,
+    `uv run pytest && uv run ruff check src`. Splitting that with shlex and
+    exec'ing the argv directly hands `&&` and everything after it to the *first*
+    program as positional arguments. tsc then reports TS5112 ("files specified
+    on commandline") and the task fails for a reason that has nothing to do with
+    its code. Worse, when the first program tolerates junk argv the run *passes*:
+    `true && echo hi` exits 0 having never echoed, so half the gate silently
+    never ran and the task merges green.
+
+    Specs routinely also name verification commands that never exit on their own
+    — `npm run dev`, `vite`, a stray `playwright test --ui`. Without a timeout one
     of those wedges the run permanently, and with nothing on screen, because the
     output is captured. The command gets its own process group so the timeout
-    kills the whole tree: killing just the shell we spawned would leave the
-    server it started holding the pipes open, and we would block on the read
-    instead.
+    kills the whole tree: killing just the shell we spawn would leave the server
+    it started holding the pipes open, and we would block on the read instead.
     """
-    argv = shlex.split(command)
-    if not argv:
+    if not command.strip():
         return VerificationOutcome(ok=True)
     if procs.is_shutting_down():
         return VerificationOutcome(ok=False, detail="cancelled", cancelled=True)
@@ -58,7 +65,8 @@ def run_verification(
     timed_out = False
     try:
         proc = subprocess.Popen(
-            argv,
+            command,
+            shell=True,
             cwd=cwd,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -68,7 +76,9 @@ def run_verification(
         )
     except (FileNotFoundError, PermissionError) as exc:
         # Raising here would take down the whole orchestrator, since callers run
-        # inside an executor. A bad command is just a failed verification.
+        # inside an executor. Under a shell an unknown command comes back as exit
+        # 127 rather than an exception; this catches the shell itself being
+        # unavailable, which is still a failed verification and not a crash.
         detail = f"could not run verification command: {exc}"
         log_file.write_text(f"Command: {command}\n{detail}\n")
         return VerificationOutcome(ok=False, detail=detail)

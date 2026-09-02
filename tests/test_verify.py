@@ -72,14 +72,60 @@ class TestRunVerification:
     def test_missing_executable_fails_instead_of_raising(self, tmp_path: Path) -> None:
         """A bad command is a failed verification, not an orchestrator crash.
 
-        Callers run this inside an executor, where a raised FileNotFoundError
-        propagates out of the loop and kills the whole run.
+        Callers run this inside an executor, where a raised exception propagates
+        out of the loop and kills the whole run. The shell turns an unknown
+        command into exit 127, so this must fail without raising either way.
         """
         outcome = run_verification(
             "definitely-not-a-real-binary --check", tmp_path, _log(tmp_path),
         )
         assert outcome.ok is False
-        assert "could not run verification command" in outcome.detail
+        assert "not found" in outcome.detail
+
+    def test_unbalanced_quotes_do_not_raise(self, tmp_path: Path) -> None:
+        """shlex.split() raised ValueError here, killing the orchestrator."""
+        outcome = run_verification('echo "unterminated', tmp_path, _log(tmp_path))
+        assert outcome.ok is False
+
+
+class TestShellOperators:
+    """Regression: verification ran without a shell, so `&&` reached the program.
+
+    `npx tsc --noEmit && npm run build` exec'd tsc with ['&&', 'npm', 'run',
+    'build'] as filenames (TS5112) — a failure unrelated to the task's code.
+    """
+
+    def test_chained_command_failure_is_detected(self, tmp_path: Path) -> None:
+        outcome = run_verification("true && false", tmp_path, _log(tmp_path))
+        assert outcome.ok is False
+
+    def test_second_half_of_a_chain_actually_runs(self, tmp_path: Path) -> None:
+        """The dangerous direction: `A && B` passed while B never ran.
+
+        `true` ignores the junk argv and exits 0, so the gate reported success
+        having tested nothing and the task merged green.
+        """
+        log = _log(tmp_path)
+        outcome = run_verification("true && echo second-half-ran", tmp_path, log)
+        assert outcome.ok is True
+        assert "second-half-ran" in log.read_text()
+
+    def test_pipes_and_redirection_work(self, tmp_path: Path) -> None:
+        outcome = run_verification(
+            "echo hello | grep -q hello", tmp_path, _log(tmp_path),
+        )
+        assert outcome.ok is True
+
+    def test_glob_is_expanded(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("x")
+        outcome = run_verification("test -f *.txt", tmp_path, _log(tmp_path))
+        assert outcome.ok is True
+
+    def test_nonzero_exit_of_last_command_wins(self, tmp_path: Path) -> None:
+        outcome = run_verification(
+            "echo ok && exit 3", tmp_path, _log(tmp_path),
+        )
+        assert outcome.ok is False
 
 
 class TestTimeout:
