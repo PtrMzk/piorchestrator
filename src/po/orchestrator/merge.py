@@ -94,6 +94,40 @@ class RebaseMerger:
         self._base_branch = "main"
         return self._base_branch
 
+    def _merge_in_progress(self, project_root: Path) -> bool:
+        """True if a `git merge` has actually started (MERGE_HEAD exists)."""
+        return self._run_git(
+            ["rev-parse", "--verify", "-q", "MERGE_HEAD"], project_root,
+        ).returncode == 0
+
+    def _confirm_merged(
+        self, branch: str, base: str, project_root: Path, **extra: bool,
+    ) -> MergeResult:
+        """The one place a merge is allowed to report success.
+
+        Every success path funnels through here because the caller acts on the
+        answer irreversibly: it marks the task completed and deletes the branch.
+        A merge that "succeeded" without landing the branch tip on the base is
+        therefore not a wasted attempt but lost work, and this is the guard.
+        `git merge-base --is-ancestor` is the ground truth.
+        """
+        check = self._run_git(
+            ["merge-base", "--is-ancestor", branch, base], project_root,
+        )
+        if check.returncode == 0:
+            return MergeResult(success=True, **extra)
+        logger.error(
+            "Merge of %s reported success but %s does not contain it", branch, base,
+        )
+        return MergeResult(
+            success=False,
+            error_message=(
+                f"Merge did not land: '{base}' does not contain '{branch}' "
+                "after the merge steps completed"
+            ),
+            **extra,
+        )
+
     def _run_git(self, args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
         """Run a git command, tracked so a shutdown can kill it.
 
@@ -230,7 +264,7 @@ class RebaseMerger:
             return fail
 
         logger.debug("Merge succeeded for %s", task_id)
-        return MergeResult(success=True)
+        return self._confirm_merged(branch, base, project_root)
 
     def _cancelled(self, project_root: Path, base: str) -> MergeResult:
         """Abandon the merge and leave the repo somewhere a human can work.
@@ -276,6 +310,18 @@ class RebaseMerger:
                 ["commit", "-m", f"Merge task {task_id}"],
                 project_root,
             )
+        elif not self._merge_in_progress(project_root):
+            # Git refused to even start the merge — an untracked file in the
+            # working tree that the branch would overwrite, a dirty index, a
+            # bad ref. There is nothing for an agent to resolve, and treating
+            # this as "no conflicts" used to commit nothing and report success,
+            # which then deleted the branch and lost the agent's work.
+            detail = result.stderr.strip() or result.stdout.strip()
+            logger.warning("Merge refused for %s: %s", task_id, detail)
+            return MergeResult(
+                success=False,
+                error_message=f"Merge refused by git (not a conflict): {detail}",
+            )
         else:
             # There are conflicts — invoke Claude to resolve
             logger.info("Conflicts detected for %s, invoking merge agent", task_id)
@@ -300,7 +346,9 @@ class RebaseMerger:
         if fail:
             return fail
 
-        return MergeResult(success=True, needed_agent_resolution=True)
+        return self._confirm_merged(
+            branch, base, project_root, needed_agent_resolution=True,
+        )
 
     def _invoke_merge_agent(
         self,
@@ -320,7 +368,14 @@ class RebaseMerger:
         )
         conflicted_files = status_result.stdout.strip()
         if not conflicted_files:
-            # No conflicts to resolve — just commit
+            if not self._merge_in_progress(project_root):
+                # Nothing to resolve because nothing was merged. Committing
+                # here would create an empty commit and claim success.
+                logger.warning(
+                    "Merge agent for %s invoked with no merge in progress", task_id,
+                )
+                return False
+            # Merge started and git resolved everything itself — just commit
             self._run_git(
                 ["commit", "-m", f"Merge task {task_id}"],
                 project_root,

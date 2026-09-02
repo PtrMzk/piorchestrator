@@ -625,10 +625,6 @@ def cmd_clean(args: argparse.Namespace) -> None:
     wt_mgr = GitWorktreeManager()
     worktrees = wt_mgr.list(project_root)
 
-    if not worktrees:
-        print("No worktrees found.")
-        return
-
     # If we have a DB, only clean worktrees for terminal tasks
     terminal_ids: set[str] = set()
     if db_path.exists():
@@ -639,6 +635,16 @@ def cmd_clean(args: argparse.Namespace) -> None:
                 terminal_ids.add(str(task["id"]))
         conn.close()
 
+    # A task that failed after a merge or verification keeps its branch with
+    # no worktree directory, so it is not in the listing above; `remove()` is
+    # idempotent, so reap those branches too.
+    kept_branches = {
+        tid for tid in terminal_ids if _branch_exists(project_root, f"po/{tid}")
+    }
+    if not worktrees and not kept_branches:
+        print("No worktrees found.")
+        return
+
     removed = 0
     for wt in worktrees:
         # Remove if task is terminal or if we have no DB
@@ -646,8 +652,20 @@ def cmd_clean(args: argparse.Namespace) -> None:
             wt_mgr.remove(wt.task_id, project_root)
             print(f"  Removed worktree: {wt.task_id}")
             removed += 1
+            kept_branches.discard(wt.task_id)
+    for task_id in sorted(kept_branches):
+        wt_mgr.remove(task_id, project_root)
+        print(f"  Removed branch: po/{task_id}")
+        removed += 1
 
-    print(f"Cleaned {removed} worktree(s).")
+    print(f"Cleaned {removed} worktree(s)/branch(es).")
+
+
+def _branch_exists(project_root: Path, branch: str) -> bool:
+    return subprocess.run(
+        ["git", "rev-parse", "--verify", "-q", f"refs/heads/{branch}"],
+        cwd=project_root, capture_output=True, check=False,
+    ).returncode == 0
 
 
 def cmd_scan(args: argparse.Namespace) -> None:

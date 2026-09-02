@@ -183,8 +183,12 @@ class TestOrchestratorLoop:
         assert "Mock merge failure for t1" in t1_calls[1]["prompt"]
         assert "Previous Attempt Failed" in t1_calls[1]["prompt"]
 
-        # remove() should only be called once — after final failure, not between retries
-        assert remove_calls == ["t1"]
+        # The branch holds work that passed pre-merge verification: never
+        # deleted, neither between retries nor after the final failure.
+        assert remove_calls == []
+        task = store.get_task("t1")
+        assert task is not None
+        assert "[branch po/t1 kept]" in str(task["error_message"])
 
         # After exhausting retries, task should be failed
         task = store.get_task("t1")

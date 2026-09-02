@@ -420,7 +420,10 @@ class OrchestratorLoop:
                             f"pre-merge verification failed, attempt {attempt}/{self.max_retries}",
                         )
                     else:
-                        self.worktree_mgr.remove(result.task_id, self.project_root)
+                        # The agent's commits are real work; keep the branch
+                        # for inspection and for `po reset` to build on.
+                        self.worktree_mgr.detach(result.task_id, self.project_root)
+                        preverify_fail = _kept_branch(preverify_fail, task)
                         self.store.set_failed(
                             result.task_id,
                             error_message=preverify_fail,
@@ -489,8 +492,10 @@ class OrchestratorLoop:
                         f"merge failed, attempt {attempt}/{self.max_retries}",
                     )
                 else:
-                    # No retries left — clean up branch
-                    self.worktree_mgr.remove(result.task_id, self.project_root)
+                    # No retries left. The branch holds work that passed
+                    # pre-merge verification, so it is kept, never deleted:
+                    # `po clean` reaps it, `po reset` builds on it.
+                    err = _kept_branch(err, task)
                     self.store.set_failed(
                         result.task_id,
                         error_message=err,
@@ -632,6 +637,12 @@ class OrchestratorLoop:
                 "dependents_cancelled", task_id,
                 f"{cancelled_count} task(s)",
             )
+
+
+def _kept_branch(err: str, task: dict[str, object]) -> str:
+    """Append the kept branch name to a final-failure message."""
+    branch = task.get("branch_name")
+    return f"{err} [branch {branch} kept]" if branch else err
 
 
 def _first_line(text: str) -> str:

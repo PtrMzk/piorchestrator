@@ -87,13 +87,15 @@ Key design: tasks that write to the same files are serialized, while tasks with 
      - *Then* auto-detects the base branch (whatever branch was checked out when the orchestrator started; not hardcoded to `main`), rejecting two readings that look valid but are not: a detached HEAD, where `rev-parse --abbrev-ref HEAD` prints the literal `HEAD`, and a `po/` task branch. Either falls back to `main`, then `master`. The result is cached for the process lifetime, so a bad reading would poison every later merge
      - Checks out the base branch
      - `git rebase <base> po/{task_id}` → on success: `git checkout <base>` → `git merge --ff-only po/{task_id}`
-     - If rebase fails: aborts, falls back to `_try_agent_merge()` → `git merge --no-ff --no-commit` → if conflicts, `_invoke_merge_agent()` spawns another Claude CLI to resolve conflict markers, stage files, commit. That spawn uses the same pipe discipline as every other Claude spawn: `config.agent_env()`, `stdin=DEVNULL`, and stderr drained on a daemon thread (see "Spawning Claude" below)
+     - If rebase fails: aborts, falls back to `_try_agent_merge()` → `git merge --no-ff --no-commit`. If git **refused** to start the merge (no `MERGE_HEAD` — an untracked file the branch would overwrite, a dirty index) that is reported as a failure, not a conflict. If there are real conflicts, `_invoke_merge_agent()` spawns another Claude CLI to resolve conflict markers, stage files, commit. That spawn uses the same pipe discipline as every other Claude spawn: `config.agent_env()`, `stdin=DEVNULL`, and stderr drained on a daemon thread (see "Spawning Claude" below)
      - Runs the post-merge verification command through the same `verify.py:run_verification()`; on failure: `git reset --hard HEAD~1` (reverts merge)
+     - **Every success path ends in `_confirm_merged()`**, which checks `git merge-base --is-ancestor po/{task_id} <base>`. The caller acts on success irreversibly (marks completed, deletes the branch), so a merge that did not land the branch tip must never be reported as success
      - Checks `procs.is_shutting_down()` at each step boundary. On shutdown it runs `_cancelled()` — `rebase --abort`, `merge --abort`, `checkout -f <base>` — so an interrupted merge leaves the repo on its base branch instead of orphaned mid-rebase
   4. On merge success: `worktree_mgr.remove()` (deletes branch), `store.set_completed()`
   5. On merge failure with retries left: keeps branch, sets task back to pending
+  6. On merge failure (or pre-merge verification failure) with no retries left: marks failed but **keeps the branch** — it holds work that passed verification. The error message ends in `[branch po/{task_id} kept]`; `po reset` builds on it, `po clean` reaps it
 - **Subtask path:** namespaces IDs as `{parent}/{subtask}`, inherits parent deps, `store.add_runtime_task()`, marks parent `decomposed`
-- **Failure path:** if retries left → `store.set_status(pending)`, cleans worktree; else → `store.set_failed()`, `store.cancel_dependents()` (BFS cascade)
+- **Failure path** (the agent itself failed): if retries left → `store.set_status(pending)`, cleans worktree; else → `store.set_failed()`, removes worktree and branch, `store.cancel_dependents()` (BFS cascade)
 
 ### 4. `po status` / `po cost` / `po logs <id>` — Monitoring
 - **status**: table of all tasks with their state, cost, and any error messages
@@ -123,12 +125,12 @@ Pre-generates documentation for an existing codebase using Claude. Creates neste
 4. Validates that the output directory was created, lists generated files
 
 ### 7. `po clean` — Cleanup
-Removes orphaned git worktrees that weren't properly cleaned up.
+Removes orphaned git worktrees that weren't properly cleaned up, and the `po/*` branches kept by tasks that failed after a merge or verification.
 
 **Code walkthrough:**
 1. `cli.py:cmd_clean` → `worktree/manager.py:GitWorktreeManager.list()` — scans `.po/worktrees/` for directories
-2. If DB exists, loads all tasks in terminal status (completed/failed/cancelled)
-3. For each worktree whose `task_id` is terminal (or no DB): `GitWorktreeManager.remove()` → `git worktree remove --force` + `git worktree prune` + `git branch -D po/{task_id}`
+2. If DB exists, loads all tasks in terminal status (completed/failed/cancelled); also finds terminal tasks whose `po/{task_id}` branch still exists with no worktree directory
+3. For each worktree whose `task_id` is terminal (or no DB), and for each kept branch: `GitWorktreeManager.remove()` → `git worktree remove --force` + `git worktree prune` + `git branch -D po/{task_id}`
 
 ---
 

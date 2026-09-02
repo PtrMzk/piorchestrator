@@ -304,6 +304,21 @@ class TestInvokeMergeAgent:
         result = merger._invoke_merge_agent("no-conf-agent", "po/no-conf-agent", git_repo)
         assert result is True
 
+    def test_no_merge_in_progress_returns_false(self, git_repo: Path) -> None:
+        """No conflicted files *and* no MERGE_HEAD means nothing was merged.
+
+        This used to commit an empty commit and return True, which turned a
+        refused merge into a "completed" task whose branch was then deleted.
+        """
+        merger = RebaseMerger()
+        _make_clean_branch(git_repo, "po/refused", "r.py", "r = 1")
+        before = _git(["rev-parse", "HEAD"], git_repo).stdout.strip()
+
+        result = merger._invoke_merge_agent("refused", "po/refused", git_repo)
+
+        assert result is False
+        assert _git(["rev-parse", "HEAD"], git_repo).stdout.strip() == before
+
     def test_claude_cli_failure_returns_false(self, git_repo: Path) -> None:
         """If Claude CLI returns non-zero, return False."""
         merger = RebaseMerger()
@@ -535,6 +550,44 @@ class TestUntrackedArtifacts:
 
         after = _git(["rev-list", "--count", "main"], git_repo).stdout.strip()
         assert int(after) == int(before) + 1  # the task's commit, and nothing else
+
+
+class TestMergeIsHonest:
+    """A merge may only report success if the base branch contains the tip."""
+
+    def test_untracked_collision_fails_and_keeps_branch(self, git_repo: Path) -> None:
+        """An untracked file the branch would overwrite refuses the checkout.
+
+        The exact shape of the bug: scaffold stubs left in the project root
+        matched the agent's output files, git refused the rebase and the merge,
+        and the fallback reported success with nothing merged.
+        """
+        merger = RebaseMerger()
+        branch = _make_clean_branch(git_repo, "po/collide", "setup.txt", "real work\n")
+        (git_repo / "setup.txt").write_text("stub")  # untracked, same path
+
+        result = merger._merge_sync(branch, "collide", "", git_repo)
+
+        assert result.success is False
+        assert "refused" in (result.error_message or "")
+        # Base did not move, branch still exists, working tree untouched
+        assert "setup.txt" not in _git(["ls-files"], git_repo).stdout
+        assert _git(["rev-parse", "--verify", branch], git_repo).returncode == 0
+        assert (git_repo / "setup.txt").read_text() == "stub"
+        assert _git(["rev-parse", "--abbrev-ref", "HEAD"], git_repo).stdout.strip() == "main"
+
+    def test_confirm_merged_rejects_unmerged_branch(self, git_repo: Path) -> None:
+        merger = RebaseMerger()
+        branch = _make_clean_branch(git_repo, "po/unmerged", "u.py", "u = 1")
+        assert merger._confirm_merged(branch, "main", git_repo).success is False
+
+    def test_confirm_merged_accepts_merged_branch(self, git_repo: Path) -> None:
+        merger = RebaseMerger()
+        branch = _make_clean_branch(git_repo, "po/merged", "m.py", "m = 1")
+        _git(["merge", "--ff-only", branch], git_repo)
+        result = merger._confirm_merged(branch, "main", git_repo, needed_agent_resolution=True)
+        assert result.success is True
+        assert result.needed_agent_resolution is True
 
 
 class TestRebaseMergerAsync:
