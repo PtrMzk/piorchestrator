@@ -41,7 +41,7 @@ This is the heart of the system. The async loop:
 
 1. **Queries the DB** for tasks whose dependencies are all `completed`
 2. **Filters for output file overlap** — prevents two tasks writing the same file concurrently
-3. **Creates a git worktree** per task (branch: `po/{task_id}`, directory: `.po/worktrees/{task_id}/`), then runs the spec's `setup` command in it (`npm ci`, `uv sync`) — a worktree is a clean checkout and dependency directories are gitignored, so without this every task starts with nothing installed. Logs to `.po/logs/setup-{task_id}.log`; a failure fails the task before the agent burns its turn budget
+3. **Creates a git worktree** per task (branch: `po/{task_id}`, directory: `.po/worktrees/{task_id}/`), then runs the spec's `setup` command in it (`npm ci`, `uv sync`) — a worktree is a clean checkout and dependency directories are gitignored, so without this every task starts with nothing installed. Logs to `.po/logs/setup-{task_id}.log`. Best-effort: a failure is reported but does not fail the task, because the bootstrap task that writes `package.json` necessarily runs before `npm ci` can succeed
 4. **Launches Claude Code** as a subprocess in that worktree with a carefully built prompt containing the task description, global context, reference file contents, expected outputs, and verification command
 5. **Streams agent output** to `.po/logs/{task_id}.jsonl`, parsing for cost/session data
 6. **Processes results** when the agent finishes:

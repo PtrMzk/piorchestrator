@@ -305,11 +305,7 @@ class OrchestratorLoop:
         # Mark as running
         self.store.set_running(task_id, str(wt_info.path), wt_info.branch)
 
-        setup_fail = await self._run_setup(task_id, wt_info.path)
-        if setup_fail is not None:
-            return AgentResult(
-                task_id=task_id, success=False, error_message=setup_fail,
-            )
+        await self._run_setup(task_id, wt_info.path)
 
         # Read context files — prefer worktree copy (may have partial
         # work from a previous attempt), fall back to project root.
@@ -568,7 +564,7 @@ class OrchestratorLoop:
                 self._handle_failure(result.task_id)
                 self._emit("task_failed", result.task_id, err)
 
-    async def _run_setup(self, task_id: str, worktree_path: Path) -> str | None:
+    async def _run_setup(self, task_id: str, worktree_path: Path) -> None:
         """Install the project's dependencies in a freshly created worktree.
 
         A worktree is a clean checkout, and dependency directories are gitignored
@@ -578,24 +574,33 @@ class OrchestratorLoop:
         package from the registry and prints "This is not the tsc command you are
         looking for", which reaches the agent as a mystery about its own code.
 
-        Returns None on success (including when no setup command is configured),
-        or an error message. Logs to .po/logs/setup-{task_id}.log.
+        Best-effort by design: a failure is logged and reported but does not fail
+        the task. The bootstrap task of any project — the one whose job is to
+        write package.json — runs before a manifest exists, so `npm ci` there
+        fails for the most ordinary reason there is, and hard-failing it would
+        deadlock layer 0 of every from-scratch run. The gate that catches a
+        genuinely broken toolchain is the task's own verification command, which
+        runs against real work rather than against an empty checkout.
+
+        Logs to .po/logs/setup-{task_id}.log.
         """
         if not self.setup:
-            return None
+            return
 
         logger.debug("Running setup for %s: %s", task_id, self.setup)
-        self._emit("task_setup", task_id, self.setup)
         log_file = ensure_logs_dir(self.project_root) / f"setup-{task_id}.log"
         outcome = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: run_verification(self.setup, worktree_path, log_file),
         )
-        if outcome.ok:
-            return None
+        if outcome.ok or outcome.cancelled:
+            return
 
-        logger.warning("Setup command failed for %s", task_id)
-        return f"Setup command failed (cmd: {self.setup}): {outcome.detail}"
+        logger.warning(
+            "Setup command failed for %s (continuing anyway): %s",
+            task_id, outcome.detail,
+        )
+        self._emit("task_setup_failed", task_id, _first_line(outcome.detail))
 
     async def _run_preverify(
         self, verification: str, task_id: str, worktree_path: Path,
@@ -627,6 +632,14 @@ class OrchestratorLoop:
                 "dependents_cancelled", task_id,
                 f"{cancelled_count} task(s)",
             )
+
+
+def _first_line(text: str) -> str:
+    """First non-empty line, for a one-line event detail."""
+    for line in text.splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
 
 
 def _format_result_detail(result: AgentResult) -> str:

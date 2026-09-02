@@ -556,18 +556,23 @@ class TestWorktreeSetup:
         assert (worktree / "installed.marker").exists()
 
     @pytest.mark.asyncio
-    async def test_failing_setup_fails_the_task_without_running_the_agent(
+    async def test_failing_setup_does_not_fail_the_task(
         self, tmp_path: Path, sample_spec: ProjectSpec
     ) -> None:
-        """Letting the agent loose without dependencies just wastes a turn budget."""
-        orch = self._loop(tmp_path, sample_spec, "echo no-lockfile >&2 && exit 1")
+        """The bootstrap task writes package.json, so `npm ci` fails before it runs.
+
+        Hard-failing there would deadlock layer 0 of every from-scratch project:
+        the one task that could fix the situation never gets to start.
+        """
+        events: list[tuple[str, str, str]] = []
+        orch = self._loop(tmp_path, sample_spec, "echo no-manifest >&2 && exit 1")
+        orch._on_event = lambda e, t, d: events.append((e, t, d))
 
         result = await orch._run_task(sample_spec.tasks[0].id)
 
-        assert result.success is False
-        assert "Setup command failed" in result.error_message
-        assert "no-lockfile" in result.error_message
-        assert orch.agent_runner.calls == []
+        assert result.success is True
+        assert len(orch.agent_runner.calls) == 1
+        assert ("task_setup_failed", sample_spec.tasks[0].id, "no-manifest") in events
 
     @pytest.mark.asyncio
     async def test_setup_output_is_logged(
