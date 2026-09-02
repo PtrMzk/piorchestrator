@@ -292,6 +292,75 @@ class TestCmdPlan:
         conn.close()
 
 
+class TestCmdInitInteractive:
+    """The outline → review → spec loop that a user at a terminal actually hits."""
+
+    def _args(self, tmp_path: Path) -> Any:
+        return _make_namespace(
+            description="build a thing", output=tmp_path / "spec.json",
+            model="haiku", project_root=tmp_path,
+        )
+
+    def _fake_spec_from_outline(self, description, outline, output, model, project_root=None):
+        output.write_text(json.dumps(SAMPLE_SPEC_DICT))
+        return output
+
+    def test_approve_first_outline(self, tmp_path: Path) -> None:
+        with patch("po.cli.sys.stdin") as stdin, \
+                patch("po.cli.generate_outline", return_value=("- outline", "sess-1")) as go, \
+                patch("po.cli.generate_spec_from_outline",
+                      side_effect=self._fake_spec_from_outline) as gs, \
+                patch("builtins.input", return_value="y"):
+            stdin.isatty.return_value = True
+            cmd_init(self._args(tmp_path))
+
+        assert go.call_count == 1
+        assert gs.call_args.args[1] == "- outline"
+        assert (tmp_path / "spec.json").exists()
+        assert state_db_path(tmp_path).exists()
+
+    def test_feedback_revises_outline_in_same_session(self, tmp_path: Path) -> None:
+        outlines = iter([("- first", "sess-1"), ("- second", "sess-1")])
+
+        def next_outline(*_a, **_k):
+            return next(outlines)
+
+        with patch("po.cli.sys.stdin") as stdin, \
+                patch("po.cli.generate_outline", side_effect=next_outline) as go, \
+                patch("po.cli.generate_spec_from_outline",
+                      side_effect=self._fake_spec_from_outline) as gs, \
+                patch("builtins.input", side_effect=["split the setup task", "y"]):
+            stdin.isatty.return_value = True
+            cmd_init(self._args(tmp_path))
+
+        assert go.call_count == 2
+        second_call = go.call_args_list[1]
+        assert second_call.kwargs["feedback"] == "split the setup task"
+        assert second_call.kwargs["session_id"] == "sess-1"
+        assert gs.call_args.args[1] == "- second"
+
+    def test_outline_failure_exits(self, tmp_path: Path) -> None:
+        with patch("po.cli.sys.stdin") as stdin, \
+                patch("po.cli.generate_outline", side_effect=RuntimeError("claude broke")), \
+                pytest.raises(SystemExit) as exc:
+            stdin.isatty.return_value = True
+            cmd_init(self._args(tmp_path))
+        assert exc.value.code == 1
+        assert not (tmp_path / "spec.json").exists()
+
+    def test_spec_failure_after_approval_exits(self, tmp_path: Path) -> None:
+        with patch("po.cli.sys.stdin") as stdin, \
+                patch("po.cli.generate_outline", return_value=("- outline", None)), \
+                patch("po.cli.generate_spec_from_outline",
+                      side_effect=ValueError("Generated spec failed validation")), \
+                patch("builtins.input", return_value=""), \
+                pytest.raises(SystemExit) as exc:
+            stdin.isatty.return_value = True
+            cmd_init(self._args(tmp_path))
+        assert exc.value.code == 1
+        assert not state_db_path(tmp_path).exists()
+
+
 class TestPlanOverExistingPlan:
     """A new spec over an old database must not silently skip finished tasks."""
 

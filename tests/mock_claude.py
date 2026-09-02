@@ -10,6 +10,13 @@ stream-json (JSONL) output.  Behaviour is determined by the prompt content:
   Parses expected output files from the prompt, writes stubs into the cwd
   (the worktree), ``git add . && git commit``, and emits a success result.
 - **Fallback**: Emits a generic success result.
+
+Failure modes, selected by markers in the prompt so a test can script them
+through a spec's task description or ``po init`` description:
+
+- ``mock:fail`` in a task prompt: writes ``.po-failure.json`` (the agent gave
+  up) and exits 0, which is how a real agent reports failure.
+- ``mock:bad-spec`` in a spec prompt: returns text that is not JSON.
 """
 
 from __future__ import annotations
@@ -138,11 +145,23 @@ def main() -> None:
 
     # ── Spec mode ─────────────────────────────────────────────────────
     if "Generate a valid PO orchestrator spec" in prompt:
+        if "mock:bad-spec" in prompt:
+            _emit_result("I could not produce a spec for that, sorry.")
+            return
         _emit_result(json.dumps(CANNED_SPEC, indent=2))
         return
 
     # ── Task mode ─────────────────────────────────────────────────────
     if "# Task:" in prompt:
+        if "mock:fail" in prompt:
+            from pathlib import Path
+
+            Path(".po-failure.json").write_text(
+                json.dumps({"reason": "mock agent gave up"})
+            )
+            _emit_result("Could not complete the task.")
+            return
+
         output_files = _parse_output_files(prompt)
         for fname in output_files:
             from pathlib import Path
@@ -157,8 +176,10 @@ def main() -> None:
                 capture_output=True,
                 check=True,
             )
+            # --allow-empty: a retry reuses the branch, so the files may be
+            # identical to what the previous attempt already committed.
             subprocess.run(
-                ["git", "commit", "-m", "Mock agent work"],
+                ["git", "commit", "--allow-empty", "-m", "Mock agent work"],
                 capture_output=True,
                 check=True,
             )
