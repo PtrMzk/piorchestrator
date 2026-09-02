@@ -17,7 +17,7 @@ def tool_summary(block: dict[str, Any]) -> str:
         Task        → "Task <description>"
         Fallback    → just the tool name
     """
-    name = block.get("name", "?")
+    name = str(block.get("name", "?"))
     inp = block.get("input", {})
 
     if name in ("Read", "read"):

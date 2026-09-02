@@ -8,6 +8,7 @@ import subprocess
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.status import Status
@@ -536,7 +537,15 @@ def _invoke_claude(
     return result_text, result_session_id
 
 
-def _extract_json(raw: str) -> dict:
+def _loads_object(text: str) -> dict[str, Any]:
+    """json.loads that only accepts a JSON object (a spec is never a list or scalar)."""
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise json.JSONDecodeError("expected a JSON object", text, 0)
+    return data
+
+
+def _extract_json(raw: str) -> dict[str, Any]:
     """Extract a JSON object from Claude's response.
 
     Handles markdown fences, preamble text, and trailing text.
@@ -545,7 +554,7 @@ def _extract_json(raw: str) -> dict:
 
     # Try direct parse first
     try:
-        return json.loads(text)
+        return _loads_object(text)
     except json.JSONDecodeError:
         pass
 
@@ -559,7 +568,7 @@ def _extract_json(raw: str) -> dict:
             if candidate.startswith(("json", "JSON")):
                 candidate = candidate.split("\n", 1)[-1].strip()
             try:
-                return json.loads(candidate)
+                return _loads_object(candidate)
             except json.JSONDecodeError:
                 continue
 
@@ -569,7 +578,7 @@ def _extract_json(raw: str) -> dict:
     if first_brace != -1 and last_brace > first_brace:
         candidate = text[first_brace : last_brace + 1]
         try:
-            return json.loads(candidate)
+            return _loads_object(candidate)
         except json.JSONDecodeError:
             pass
 

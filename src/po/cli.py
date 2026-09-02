@@ -34,7 +34,7 @@ from po.init.generator import (
     generate_spec,
     generate_spec_from_outline,
 )
-from po.orchestrator.loop import OrchestratorLoop
+from po.orchestrator.loop import EventCallback, OrchestratorLoop
 from po.playground.generator import generate_playground
 from po.preflight import run_preflight
 from po.scaffold.generator import generate_scaffolds
@@ -513,6 +513,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     # Choose display mode based on TTY
     live_display = None
+    on_event: EventCallback
     if sys.stdout.isatty():
         from po.display.live import LiveDisplay
 
