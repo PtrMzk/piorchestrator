@@ -457,6 +457,14 @@ class TestInvokeClaudeSubprocess:
         assert text == "ok"
         assert session_id == "s1"
 
+    def test_missing_claude_is_a_runtime_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`cmd_init` catches RuntimeError; a bare FileNotFoundError was a traceback."""
+        monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+        with pytest.raises(RuntimeError, match="not on PATH"):
+            _invoke_claude("prompt", "haiku", project_root=tmp_path)
+
     def test_no_result_surfaces_stderr(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

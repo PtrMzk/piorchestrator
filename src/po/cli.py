@@ -36,6 +36,7 @@ from po.init.generator import (
 )
 from po.orchestrator.loop import OrchestratorLoop
 from po.playground.generator import generate_playground
+from po.preflight import run_preflight
 from po.scaffold.generator import generate_scaffolds
 from po.spec.loader import JsonSpecLoader
 
@@ -128,6 +129,13 @@ def main() -> None:
     )
     run_parser.add_argument(
         "--max-turns", type=int, help="Max agent turns per task",
+    )
+    run_parser.add_argument(
+        "--allow-dirty", action="store_true",
+        help=(
+            "Run even if tracked files have uncommitted changes. "
+            "The merge runs 'git checkout -f', which discards them"
+        ),
     )
     # po status
     status_parser = subparsers.add_parser("status", help="Show task states and progress")
@@ -390,6 +398,23 @@ def cmd_run(args: argparse.Namespace) -> None:
         print(format_progress_summary(all_tasks))
         conn.close()
         return
+
+    # Pre-flight: every one of these used to surface late and badly — as a
+    # traceback from git, as every task failing on a missing `claude`, or as
+    # uncommitted work discarded by the merge. Check before touching anything.
+    pending_outputs: list[str] = []
+    for t in non_terminal:
+        raw = t["output_files"]
+        pending_outputs.extend(json.loads(raw) if isinstance(raw, str) else raw)
+    problems = run_preflight(
+        project_root, pending_outputs,
+        allow_dirty=getattr(args, "allow_dirty", False),
+    )
+    if problems:
+        for problem in problems:
+            logger.error("%s", problem)
+        conn.close()
+        sys.exit(1)
 
     max_concurrency = (
         args.concurrency or int(project["max_concurrency"])

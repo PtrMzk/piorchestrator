@@ -429,14 +429,20 @@ def _invoke_claude(
         log_dir = ensure_logs_dir(project_root)
         log_file = log_dir / "init.jsonl"
 
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-        cwd=str(project_root) if project_root is not None else None,
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            cwd=str(project_root) if project_root is not None else None,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "Claude CLI not found: 'claude' is not on PATH. "
+            "Install Claude Code (https://claude.com/claude-code) and try again."
+        ) from None
 
     # Drain stderr on a thread. Reading it only after the process exits would
     # deadlock: once the OS pipe buffer fills, the child blocks writing to

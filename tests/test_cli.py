@@ -325,6 +325,22 @@ class TestCmdRun:
         # Should not raise, just exit early
         cmd_run(args)
 
+    def test_preflight_problems_abort_before_orchestrating(self, tmp_path: Path) -> None:
+        project_root, conn, _ = _setup_planned_project(tmp_path)
+        conn.close()
+        args = _make_namespace(
+            spec_file=None, project_root=project_root, concurrency=None,
+            max_retries=1, model=None, max_turns=None,
+        )
+        with patch("po.cli.run_preflight", return_value=["claude missing"]) as pf, \
+                patch("po.cli.OrchestratorLoop") as mock_loop_cls, \
+                pytest.raises(SystemExit) as exc:
+            cmd_run(args)
+        assert exc.value.code == 1
+        mock_loop_cls.assert_not_called()
+        # Output files of the pending tasks are what the collision check needs
+        assert set(pf.call_args[0][1]) == {"file_a.py", "file_b.py", "file_c.py", "file_d.py"}
+
     def test_run_invokes_orchestrator(self, tmp_path: Path) -> None:
         project_root, conn, _ = _setup_planned_project(tmp_path)
         conn.close()
@@ -338,7 +354,8 @@ class TestCmdRun:
             max_turns=20,
         )
 
-        with patch("po.cli.OrchestratorLoop") as mock_loop_cls:
+        with patch("po.cli.run_preflight", return_value=[]), \
+                patch("po.cli.OrchestratorLoop") as mock_loop_cls:
             mock_instance = MagicMock()
             mock_instance.run = MagicMock(return_value=None)
             mock_loop_cls.return_value = mock_instance
@@ -602,6 +619,7 @@ class TestCmdRunDisplayMode:
         )
 
         with (
+            patch("po.cli.run_preflight", return_value=[]),
             patch("po.cli.OrchestratorLoop") as mock_loop_cls,
             patch("po.cli.asyncio.run"),
             patch("po.cli.sys.stdout") as mock_stdout,
@@ -631,6 +649,7 @@ class TestCmdRunDisplayMode:
         )
 
         with (
+            patch("po.cli.run_preflight", return_value=[]),
             patch("po.cli.OrchestratorLoop") as mock_loop_cls,
             patch("po.cli.asyncio.run"),
             patch("po.cli.sys.stdout") as mock_stdout,

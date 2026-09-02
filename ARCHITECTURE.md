@@ -58,9 +58,10 @@ Key design: tasks that write to the same files are serialized, while tasks with 
 **Code walkthrough — startup (`cli.py:cmd_run`):**
 1. If a spec file is given, auto-runs `cmd_plan` first
 2. Opens the DB, reads project metadata + checks for non-terminal tasks
-3. If TTY, creates `display/live.py:LiveDisplay` (Rich Live at 4Hz); otherwise uses a simple `_live_event_printer` callback
-4. Constructs `orchestrator/loop.py:OrchestratorLoop` with store, worktree manager, agent runner, merger (all protocol-based, defaulting to real implementations)
-5. Spawns `caffeinate -i -s` to prevent macOS sleep, then `asyncio.run(orchestrator.run())`
+3. **Pre-flight** (`preflight.py:run_preflight`) — refuses to start, with one actionable sentence per problem, if: `claude` is not on PATH; git has no author identity (`git var GIT_AUTHOR_IDENT`); tracked files have uncommitted changes (the merge's `git checkout -f` would discard them; `--allow-dirty` skips this one check); or an untracked file sits at a pending task's output path (git would refuse the merge). Each of these used to surface late and badly: as a traceback from `git commit`, as every task failing after burning its retries, or as work silently destroyed
+4. If TTY, creates `display/live.py:LiveDisplay` (Rich Live at 4Hz); otherwise uses a simple `_live_event_printer` callback
+5. Constructs `orchestrator/loop.py:OrchestratorLoop` with store, worktree manager, agent runner, merger (all protocol-based, defaulting to real implementations)
+6. Spawns `caffeinate -i -s` to prevent macOS sleep, then `asyncio.run(orchestrator.run())`
 
 **Code walkthrough — the async loop (`orchestrator/loop.py:OrchestratorLoop`):**
 1. `run()` calls `_prepare_repo()` — `worktree/manager.py:ensure_git_repo()` (init + initial commit if needed), then seeds and commits `.gitignore` from `config.GITIGNORE_PATTERNS`. **This must happen before the first `git worktree add`.** Any commit that lands on the base branch after a task branch was cut, touching a file the agent also writes, is an add/add conflict the task cannot avoid — and `.gitignore` is exactly that file for scaffolding tasks. It commits with a pathspec (`git commit -m … -- .gitignore`) so unrelated staged work is never swept in
@@ -147,6 +148,7 @@ Removes orphaned git worktrees that weren't properly cleaned up, and the `po/*` 
 | **Agent** | `agent/launcher.py`, `agent/prompt_builder.py` | Claude CLI subprocess management, prompt construction, cost/session parsing |
 | **Merge** | `orchestrator/merge.py` | Rebase + fast-forward merge; spawns a "merge agent" Claude to resolve conflicts |
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
+| **Pre-flight** | `preflight.py` | Environment and repository checks before `po run` starts: `claude` on PATH, git identity, clean tracked tree, no untracked files at output paths |
 | **Verification** | `verify.py` | Runs a task's verification command through a shell, under a hard timeout, in its own process group |
 | **Process registry** | `procs.py` | Tracks live child process groups so shutdown can kill executor-thread work |
 | **Scan** | `scan/scanner.py` | Codebase documentation generation via Claude CLI |
@@ -156,7 +158,7 @@ Removes orphaned git worktrees that weren't properly cleaned up, and the `po/*` 
 
 ## Spawning Claude
 
-Four places spawn the `claude` CLI: `agent/launcher.py` (task agents, async),
+Four places spawn the `claude` CLI (the two synchronous entry points, `po init` and `po scan`, turn a missing binary into a `RuntimeError` with an install hint; `po run` checks PATH in pre-flight): `agent/launcher.py` (task agents, async),
 `orchestrator/merge.py:_invoke_merge_agent` (conflict resolution),
 `init/generator.py:_invoke_claude` (spec generation), and
 `scan/scanner.py:_invoke_scan_agent` (codebase docs). All of them stream
@@ -200,6 +202,7 @@ as an unexplained hang:
 | `scaffold/generator.py` | Stub file generation |
 | `docs/generator.py` | Documentation tree generation |
 | `scan/scanner.py` | Codebase documentation scanner |
+| `preflight.py` | Pre-run checks for `po run` (claude on PATH, git identity, clean tree, output collisions) |
 | `verify.py` | Verification command runner (shell execution, timeout, process-group kill, output logging) |
 | `procs.py` | Live child process registry; `shutdown()` kills every tracked process group |
 | `playground/generator.py` | Self-testing playground spec |
