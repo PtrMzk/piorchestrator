@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS project (
     max_concurrency INTEGER DEFAULT 5,
     global_context TEXT DEFAULT '',
     global_context_files TEXT DEFAULT '[]',
+    setup TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now'))
 );
 

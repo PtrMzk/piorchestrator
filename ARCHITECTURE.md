@@ -41,7 +41,7 @@ This is the heart of the system. The async loop:
 
 1. **Queries the DB** for tasks whose dependencies are all `completed`
 2. **Filters for output file overlap** — prevents two tasks writing the same file concurrently
-3. **Creates a git worktree** per task (branch: `po/{task_id}`, directory: `.po/worktrees/{task_id}/`)
+3. **Creates a git worktree** per task (branch: `po/{task_id}`, directory: `.po/worktrees/{task_id}/`), then runs the spec's `setup` command in it (`npm ci`, `uv sync`) — a worktree is a clean checkout and dependency directories are gitignored, so without this every task starts with nothing installed. Logs to `.po/logs/setup-{task_id}.log`; a failure fails the task before the agent burns its turn budget
 4. **Launches Claude Code** as a subprocess in that worktree with a carefully built prompt containing the task description, global context, reference file contents, expected outputs, and verification command
 5. **Streams agent output** to `.po/logs/{task_id}.jsonl`, parsing for cost/session data
 6. **Processes results** when the agent finishes:
@@ -180,7 +180,7 @@ as an unexplained hang:
 | `config.py` | Constants, path helpers, model escalation ladder |
 | `spec/schema.py` | `ProjectSpec` and `TaskSpec` dataclasses |
 | `spec/loader.py` | JSON spec loading and validation |
-| `db/connection.py` | SQLite connection management |
+| `db/connection.py` | SQLite connection management; `_migrate()` adds post-initial columns to existing DBs |
 | `db/models.py` | Schema DDL |
 | `db/queries.py` | `SqliteTaskStore` (all DB operations) |
 | `orchestrator/loop.py` | Main async orchestration loop |
@@ -207,7 +207,7 @@ as an unexplained hang:
 ### ProjectSpec
 ```
 project_name, description, tasks[], default_model, max_concurrency,
-global_context, global_context_files[], user_stories[], version
+global_context, global_context_files[], user_stories[], setup, version
 ```
 
 ### TaskSpec

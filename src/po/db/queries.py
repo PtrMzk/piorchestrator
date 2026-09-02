@@ -90,8 +90,8 @@ class SqliteTaskStore:
         self.conn.execute(
             """INSERT OR REPLACE INTO project
                (id, project_name, description, default_model,
-                max_concurrency, global_context, global_context_files)
-               VALUES (1, ?, ?, ?, ?, ?, ?)""",
+                max_concurrency, global_context, global_context_files, setup)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 spec.project_name,
                 spec.description,
@@ -99,6 +99,7 @@ class SqliteTaskStore:
                 spec.max_concurrency,
                 spec.global_context,
                 json.dumps(spec.global_context_files),
+                spec.setup,
             ),
         )
         for task in spec.tasks:

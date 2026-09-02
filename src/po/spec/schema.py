@@ -87,6 +87,7 @@ class ProjectSpec:
     global_context: str = ""
     global_context_files: list[str] = field(default_factory=list)
     user_stories: list[str] = field(default_factory=list)
+    setup: str = ""
     version: str = SPEC_VERSION
 
     def validate(self) -> list[str]:
@@ -150,6 +151,7 @@ class ProjectSpec:
             global_context=data.get("global_context", ""),
             global_context_files=data.get("global_context_files", []),
             user_stories=data.get("user_stories", []),
+            setup=data.get("setup", ""),
             version=data.get("version", SPEC_VERSION),
         )
 

@@ -387,6 +387,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         else global_context_files_raw
     )
 
+    setup = project.get("setup") or ""
+
     max_retries = args.max_retries
     model_override = args.model
     max_turns = args.max_turns or DEFAULT_MAX_TURNS
@@ -407,6 +409,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         max_concurrency=max_concurrency,
         global_context=global_context,
         global_context_files=global_context_files,
+        setup=setup,
         max_retries=max_retries,
         on_event=on_event,
         model_override=model_override,

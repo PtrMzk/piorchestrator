@@ -32,18 +32,29 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def _migrate(conn: sqlite3.Connection) -> None:
-    """Add columns that may be missing in older databases."""
-    existing = {
-        row[1]
-        for row in conn.execute("PRAGMA table_info(tasks)").fetchall()
-    }
-    migrations = [
+# Columns added after the initial schema, per table. CREATE TABLE IF NOT EXISTS
+# is a no-op on an existing database, so every column added later needs an entry
+# here or older .po/po.db files break on read.
+_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
+    "tasks": [
         ("input_tokens", "INTEGER"),
         ("output_tokens", "INTEGER"),
         ("num_turns", "INTEGER"),
-    ]
-    for col, col_type in migrations:
-        if col not in existing:
-            conn.execute(f"ALTER TABLE tasks ADD COLUMN {col} {col_type}")
+    ],
+    "project": [
+        ("setup", "TEXT DEFAULT ''"),
+    ],
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns that may be missing in older databases."""
+    for table, migrations in _MIGRATIONS.items():
+        existing = {
+            row[1]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for col, col_type in migrations:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
     conn.commit()

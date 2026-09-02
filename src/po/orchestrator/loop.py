@@ -48,6 +48,7 @@ class OrchestratorLoop:
         merger: MergeStrategy | None = None,
         global_context: str = "",
         global_context_files: list[str] | None = None,
+        setup: str = "",
         max_retries: int = 1,
         on_event: EventCallback | None = None,
         model_override: str | None = None,
@@ -61,6 +62,7 @@ class OrchestratorLoop:
         self.merger = merger or RebaseMerger()
         self.global_context = global_context
         self.global_context_files = global_context_files or []
+        self.setup = setup
         self.max_retries = max_retries
         self._on_event = on_event
         self.model_override = model_override
@@ -302,6 +304,12 @@ class OrchestratorLoop:
 
         # Mark as running
         self.store.set_running(task_id, str(wt_info.path), wt_info.branch)
+
+        setup_fail = await self._run_setup(task_id, wt_info.path)
+        if setup_fail is not None:
+            return AgentResult(
+                task_id=task_id, success=False, error_message=setup_fail,
+            )
 
         # Read context files — prefer worktree copy (may have partial
         # work from a previous attempt), fall back to project root.
@@ -559,6 +567,35 @@ class OrchestratorLoop:
                 )
                 self._handle_failure(result.task_id)
                 self._emit("task_failed", result.task_id, err)
+
+    async def _run_setup(self, task_id: str, worktree_path: Path) -> str | None:
+        """Install the project's dependencies in a freshly created worktree.
+
+        A worktree is a clean checkout, and dependency directories are gitignored
+        (`node_modules/`, `.venv/`), so nothing installed in the project root is
+        present here — every task starts with no dependencies at all. `npx tsc`
+        in that state does not fail usefully: it downloads an unrelated `tsc`
+        package from the registry and prints "This is not the tsc command you are
+        looking for", which reaches the agent as a mystery about its own code.
+
+        Returns None on success (including when no setup command is configured),
+        or an error message. Logs to .po/logs/setup-{task_id}.log.
+        """
+        if not self.setup:
+            return None
+
+        logger.debug("Running setup for %s: %s", task_id, self.setup)
+        self._emit("task_setup", task_id, self.setup)
+        log_file = ensure_logs_dir(self.project_root) / f"setup-{task_id}.log"
+        outcome = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: run_verification(self.setup, worktree_path, log_file),
+        )
+        if outcome.ok:
+            return None
+
+        logger.warning("Setup command failed for %s", task_id)
+        return f"Setup command failed (cmd: {self.setup}): {outcome.detail}"
 
     async def _run_preverify(
         self, verification: str, task_id: str, worktree_path: Path,

@@ -26,6 +26,7 @@ _EXAMPLE_SPEC = """\
   "max_concurrency": 5,
   "global_context": "TypeScript on Bun. Prefer built-in Bun APIs. Only well-known deps.",
   "global_context_files": ["README.md"],
+  "setup": "bun install",
   "tasks": [
     {
       "id": "init-project",
@@ -281,6 +282,12 @@ The spec must be a JSON object with these fields:
 - "max_concurrency" (integer): how many tasks can run in parallel, typically 5
 - "global_context" (string): shared instructions for all tasks
 - "global_context_files" (list of strings): files all tasks should read
+- "setup" (string): shell command that installs dependencies, run in every task's
+  worktree before its agent starts. Each task runs in a fresh git worktree, so
+  gitignored dependency directories (node_modules/, .venv/) are never present and
+  verification commands like `npx tsc` fail without this. Use the project's
+  lockfile-respecting install (`npm ci`, `bun install`, `uv sync`), and leave it
+  empty only if the project genuinely has no dependency step.
 - "user_stories" (list of strings): plain-English user stories
 - "tasks" (list, required): array of task objects
 

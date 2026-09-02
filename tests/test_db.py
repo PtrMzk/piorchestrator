@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from po.db.connection import init_db
 from po.db.queries import SqliteTaskStore
 from po.spec.schema import ProjectSpec, TaskSpec
 
@@ -149,3 +152,26 @@ class TestSqliteTaskStore:
         task = store.get_task("task-a")
         assert task is not None
         assert task["description"] == "Updated description"
+
+
+class TestSetupCommandPersistence:
+    def test_setup_survives_a_spec_round_trip(
+        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+    ) -> None:
+        sample_spec.setup = "npm ci"
+        store.save_spec(sample_spec)
+        assert store.get_project()["setup"] == "npm ci"
+
+    def test_missing_setup_column_is_migrated(self, tmp_path: Path) -> None:
+        """`CREATE TABLE IF NOT EXISTS` is a no-op, so old .po/po.db files need this."""
+        db_path = tmp_path / "old.db"
+        conn = init_db(db_path)
+        conn.execute("ALTER TABLE project DROP COLUMN setup")
+        conn.commit()
+        conn.close()
+
+        migrated = init_db(db_path)
+        columns = {
+            row[1] for row in migrated.execute("PRAGMA table_info(project)")
+        }
+        assert "setup" in columns

@@ -514,3 +514,82 @@ class TestShutdownLeavesTasksResumable:
 
         assert orch._shutting_down is True
         assert proc.wait(timeout=10) is not None
+
+
+class TestWorktreeSetup:
+    """Dependencies must be installed in the worktree before the agent runs.
+
+    A worktree is a clean checkout and dependency directories are gitignored, so
+    without this every task starts with nothing installed and its verification
+    command fails for reasons unrelated to the task.
+    """
+
+    @staticmethod
+    def _loop(
+        tmp_path: Path, sample_spec: ProjectSpec, setup: str,
+    ) -> OrchestratorLoop:
+        project_root = tmp_path / "project"
+        project_root.mkdir(exist_ok=True)
+        store = SqliteTaskStore(init_db(project_root / ".po" / "state.db"))
+        store.save_spec(sample_spec)
+        return OrchestratorLoop(
+            store=store,
+            project_root=project_root,
+            worktree_manager=MockWorktreeProvider(tmp_path / "wt"),
+            agent_runner=MockAgentRunner(),
+            merger=MockMergeStrategy(),
+            setup=setup,
+            max_retries=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_setup_runs_in_the_worktree_before_the_agent(
+        self, tmp_path: Path, sample_spec: ProjectSpec
+    ) -> None:
+        orch = self._loop(tmp_path, sample_spec, "touch installed.marker")
+        task_id = sample_spec.tasks[0].id
+
+        result = await orch._run_task(task_id)
+
+        assert result.success is True
+        worktree = Path(orch.store.get_task(task_id)["worktree_path"])
+        assert (worktree / "installed.marker").exists()
+
+    @pytest.mark.asyncio
+    async def test_failing_setup_fails_the_task_without_running_the_agent(
+        self, tmp_path: Path, sample_spec: ProjectSpec
+    ) -> None:
+        """Letting the agent loose without dependencies just wastes a turn budget."""
+        orch = self._loop(tmp_path, sample_spec, "echo no-lockfile >&2 && exit 1")
+
+        result = await orch._run_task(sample_spec.tasks[0].id)
+
+        assert result.success is False
+        assert "Setup command failed" in result.error_message
+        assert "no-lockfile" in result.error_message
+        assert orch.agent_runner.calls == []
+
+    @pytest.mark.asyncio
+    async def test_setup_output_is_logged(
+        self, tmp_path: Path, sample_spec: ProjectSpec
+    ) -> None:
+        task_id = sample_spec.tasks[0].id
+        orch = self._loop(tmp_path, sample_spec, "echo installing-deps")
+
+        await orch._run_task(task_id)
+
+        log = orch.project_root / ".po" / "logs" / f"setup-{task_id}.log"
+        assert "installing-deps" in log.read_text()
+
+    @pytest.mark.asyncio
+    async def test_no_setup_command_is_a_no_op(
+        self, tmp_path: Path, sample_spec: ProjectSpec
+    ) -> None:
+        orch = self._loop(tmp_path, sample_spec, "")
+        task_id = sample_spec.tasks[0].id
+
+        result = await orch._run_task(task_id)
+
+        assert result.success is True
+        log = orch.project_root / ".po" / "logs" / f"setup-{task_id}.log"
+        assert not log.exists()
