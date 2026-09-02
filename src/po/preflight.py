@@ -23,7 +23,11 @@ _OWN_FILES = frozenset({".gitignore"})
 
 def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=False,
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -71,7 +75,8 @@ def check_clean_worktree(project_root: Path) -> str | None:
         return None
     result = _git(["status", "--porcelain", "--untracked-files=no"], project_root)
     dirty = [
-        line for line in result.stdout.splitlines()
+        line
+        for line in result.stdout.splitlines()
         if line.strip() and line[3:].strip() not in _OWN_FILES
     ]
     if not dirty:
@@ -86,7 +91,8 @@ def check_clean_worktree(project_root: Path) -> str | None:
 
 
 def check_output_collisions(
-    project_root: Path, output_files: Iterable[str],
+    project_root: Path,
+    output_files: Iterable[str],
 ) -> str | None:
     """An untracked file at an agent's output path makes git refuse the merge.
 

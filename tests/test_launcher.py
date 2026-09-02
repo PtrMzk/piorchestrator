@@ -38,7 +38,9 @@ class _AsyncLineIterator:
 
 
 def _make_mock_process(
-    stdout: bytes = b"", stderr: bytes = b"", returncode: int = 0,
+    stdout: bytes = b"",
+    stderr: bytes = b"",
+    returncode: int = 0,
 ) -> AsyncMock:
     proc = AsyncMock()
     proc.stdout = _AsyncLineIterator(stdout)
@@ -65,7 +67,10 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", return_value=mock_proc):
             result = await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
                 project_root=project_root,
             )
 
@@ -88,7 +93,10 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", return_value=mock_proc):
             result = await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
                 project_root=project_root,
             )
 
@@ -108,7 +116,10 @@ class TestClaudeCodeRunner:
             side_effect=FileNotFoundError,
         ):
             result = await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
                 project_root=project_root,
             )
 
@@ -135,7 +146,10 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", return_value=mock_proc):
             result = await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
                 project_root=project_root,
             )
 
@@ -157,7 +171,10 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", return_value=mock_proc):
             result = await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
                 project_root=project_root,
             )
 
@@ -178,7 +195,10 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", return_value=mock_proc):
             result = await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
                 project_root=project_root,
             )
 
@@ -198,8 +218,12 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", mock_exec):
             await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
-                project_root=project_root, max_budget_usd=1.50,
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
+                project_root=project_root,
+                max_budget_usd=1.50,
             )
 
         cmd_args = mock_exec.call_args[0]
@@ -219,8 +243,12 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", mock_exec):
             await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
-                project_root=project_root, max_budget_usd=None,
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
+                project_root=project_root,
+                max_budget_usd=None,
             )
 
         cmd_args = mock_exec.call_args[0]
@@ -259,7 +287,10 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", return_value=mock_proc):
             result = await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
                 project_root=project_root,
             )
 
@@ -279,7 +310,10 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", return_value=mock_proc):
             result = await runner.run(
-                "t1", "do stuff", worktree, "sonnet",
+                "t1",
+                "do stuff",
+                worktree,
+                "sonnet",
                 project_root=project_root,
             )
 
@@ -300,8 +334,12 @@ class TestClaudeCodeRunner:
         runner = ClaudeCodeRunner()
         with patch("po.agent.launcher.asyncio.create_subprocess_exec", mock_exec):
             await runner.run(
-                "t1", "my prompt", worktree, "opus",
-                max_turns=25, project_root=project_root,
+                "t1",
+                "my prompt",
+                worktree,
+                "opus",
+                max_turns=25,
+                project_root=project_root,
             )
 
         cmd_args = mock_exec.call_args[0]
@@ -358,8 +396,11 @@ class TestAgentCancellation:
 
         task = asyncio.create_task(
             ClaudeCodeRunner().run(
-                task_id="cancelled", prompt="p", worktree_path=worktree,
-                model="sonnet", project_root=tmp_path,
+                task_id="cancelled",
+                prompt="p",
+                worktree_path=worktree,
+                model="sonnet",
+                project_root=tmp_path,
             )
         )
         # Wait for the agent to spawn its child before cancelling.
@@ -393,8 +434,11 @@ class TestAgentCancellation:
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
 
         await ClaudeCodeRunner().run(
-            task_id="clean", prompt="p", worktree_path=worktree,
-            model="sonnet", project_root=tmp_path,
+            task_id="clean",
+            prompt="p",
+            worktree_path=worktree,
+            model="sonnet",
+            project_root=tmp_path,
         )
 
         assert procs.shutdown() == 0

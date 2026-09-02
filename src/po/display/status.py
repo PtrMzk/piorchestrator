@@ -20,10 +20,7 @@ def format_status_table(tasks: list[dict[str, Any]]) -> str:
         return "No tasks found."
 
     lines: list[str] = []
-    header = (
-        f"{'Status':<12} {'ID':<25} {'Cost':<10} "
-        f"{'Description':<40}"
-    )
+    header = f"{'Status':<12} {'ID':<25} {'Cost':<10} {'Description':<40}"
     lines.append(header)
     lines.append("─" * 87)
 
@@ -34,10 +31,7 @@ def format_status_table(tasks: list[dict[str, Any]]) -> str:
         cost = task.get("cost_usd")
         cost_str = f"${cost:.4f}" if cost is not None else ""
         desc = str(task["description"])[:38]
-        lines.append(
-            f"{symbol} {status:<10} {task_id:<25} "
-            f"{cost_str:<10} {desc}"
-        )
+        lines.append(f"{symbol} {status:<10} {task_id:<25} {cost_str:<10} {desc}")
         # Show error message for failed tasks
         error = task.get("error_message")
         if error and status == "failed":
@@ -91,8 +85,7 @@ def format_cost_summary(tasks: list[dict[str, Any]]) -> str:
         else:
             dur_str = "—"
         lines.append(
-            f"{task_id:<25} {status:<12} {in_str:<12} "
-            f"{out_str:<12} {turns_str:<8} {dur_str}"
+            f"{task_id:<25} {status:<12} {in_str:<12} {out_str:<12} {turns_str:<8} {dur_str}"
         )
         if in_tok is not None:
             total_in += int(in_tok)
@@ -100,10 +93,7 @@ def format_cost_summary(tasks: list[dict[str, Any]]) -> str:
             total_out += int(out_tok)
 
     lines.append("─" * 81)
-    lines.append(
-        f"{'TOTAL':<37} {_fmt_tokens(total_in):<12} "
-        f"{_fmt_tokens(total_out)}"
-    )
+    lines.append(f"{'TOTAL':<37} {_fmt_tokens(total_in):<12} {_fmt_tokens(total_out)}")
     return "\n".join(lines)
 
 

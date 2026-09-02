@@ -69,11 +69,15 @@ def main() -> None:
     # Global flags
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument(
-        "-v", "--verbose", action="store_true",
+        "-v",
+        "--verbose",
+        action="store_true",
         help="Enable debug logging",
     )
     verbosity.add_argument(
-        "-q", "--quiet", action="store_true",
+        "-q",
+        "--quiet",
+        action="store_true",
         help="Suppress info-level logging",
     )
 
@@ -82,19 +86,26 @@ def main() -> None:
     # po plan
     plan_parser = subparsers.add_parser("plan", help="Load spec, validate, show execution plan")
     plan_parser.add_argument(
-        "spec_file", type=Path, nargs="?", default=None,
+        "spec_file",
+        type=Path,
+        nargs="?",
+        default=None,
         help="Path to the spec JSON file",
     )
     plan_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
     plan_parser.add_argument(
-        "--playground", action="store_true",
+        "--playground",
+        action="store_true",
         help="Generate a self-testing playground spec for quick verification",
     )
     plan_parser.add_argument(
-        "--fresh", action="store_true",
+        "--fresh",
+        action="store_true",
         help=(
             "Discard the existing plan in .po/state.db before saving this one. "
             "Required to plan a different project, or to redefine tasks that "
@@ -102,44 +113,63 @@ def main() -> None:
         ),
     )
     plan_parser.add_argument(
-        "--scaffold", action=argparse.BooleanOptionalAction, default=False,
+        "--scaffold",
+        action=argparse.BooleanOptionalAction,
+        default=False,
         help=(
             "Generate stub files for all output_files in the spec (default: off). "
             "Commit them before 'po run': task branches only see committed files"
         ),
     )
     plan_parser.add_argument(
-        "--generate-docs", action=argparse.BooleanOptionalAction, default=False,
+        "--generate-docs",
+        action=argparse.BooleanOptionalAction,
+        default=False,
         help="Generate documentation tree (default: off; commit it before 'po run')",
     )
 
     # po run
     run_parser = subparsers.add_parser(
-        "run", help="Start the orchestration loop",
+        "run",
+        help="Start the orchestration loop",
     )
     run_parser.add_argument(
-        "spec_file", type=Path, nargs="?", default=None,
+        "spec_file",
+        type=Path,
+        nargs="?",
+        default=None,
         help="Optional spec file — auto-runs 'po plan' first",
     )
     run_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
     run_parser.add_argument(
-        "--concurrency", type=int, help="Override max concurrency",
+        "--concurrency",
+        type=int,
+        help="Override max concurrency",
     )
     run_parser.add_argument(
-        "--max-retries", type=int, default=1,
+        "--max-retries",
+        type=int,
+        default=1,
         help="Max retries per task (default: 1)",
     )
     run_parser.add_argument(
-        "--model", type=str, help="Override model for all tasks",
+        "--model",
+        type=str,
+        help="Override model for all tasks",
     )
     run_parser.add_argument(
-        "--max-turns", type=int, help="Max agent turns per task",
+        "--max-turns",
+        type=int,
+        help="Max agent turns per task",
     )
     run_parser.add_argument(
-        "--allow-dirty", action="store_true",
+        "--allow-dirty",
+        action="store_true",
         help=(
             "Run even if tracked files have uncommitted changes. "
             "The merge runs 'git checkout -f', which discards them"
@@ -148,25 +178,32 @@ def main() -> None:
     # po status
     status_parser = subparsers.add_parser("status", help="Show task states and progress")
     status_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
 
     # po reset
     reset_parser = subparsers.add_parser("reset", help="Reset failed/cancelled tasks to pending")
     reset_parser.add_argument(
-        "--task", type=str,
+        "--task",
+        type=str,
         help="Specific task ID to reset (default: all failed/cancelled)",
     )
     reset_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
 
     # po cost
     cost_parser = subparsers.add_parser("cost", help="Show cost summary")
     cost_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
 
@@ -175,62 +212,87 @@ def main() -> None:
     logs_parser.add_argument("task_id", type=str, help="Task ID")
     logs_parser.add_argument("--raw", action="store_true", help="Show raw JSONL")
     logs_parser.add_argument(
-        "--tail", type=int, default=0, metavar="N",
+        "--tail",
+        type=int,
+        default=0,
+        metavar="N",
         help="Show only the last N log entries",
     )
     logs_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
 
     # po clean
     clean_parser = subparsers.add_parser(
-        "clean", help="Remove orphaned worktrees",
+        "clean",
+        help="Remove orphaned worktrees",
     )
     clean_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
 
     # po scan
     scan_parser = subparsers.add_parser(
-        "scan", help="Scan codebase and generate documentation",
+        "scan",
+        help="Scan codebase and generate documentation",
     )
     scan_parser.add_argument(
-        "--model", type=str, default="opus",
+        "--model",
+        type=str,
+        default="opus",
         help="Claude model to use (default: opus)",
     )
     scan_parser.add_argument(
-        "--output-dir", type=str, default="docs/codebase",
+        "--output-dir",
+        type=str,
+        default="docs/codebase",
         help="Output directory for generated docs (default: docs/codebase)",
     )
     scan_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
 
     # po init
     init_parser = subparsers.add_parser(
-        "init", help="Generate a spec file from a plain English description",
+        "init",
+        help="Generate a spec file from a plain English description",
     )
     init_parser.add_argument(
-        "description", type=str,
+        "description",
+        type=str,
         help="Plain English project description",
     )
     init_parser.add_argument(
-        "-o", "--output", type=Path, default=Path("spec.json"),
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("spec.json"),
         help="Output file path (default: spec.json)",
     )
     init_parser.add_argument(
-        "--model", type=str, default="opus",
+        "--model",
+        type=str,
+        default="opus",
         help="Claude model to use (default: opus)",
     )
     init_parser.add_argument(
-        "--project-root", type=Path, default=Path("."),
+        "--project-root",
+        type=Path,
+        default=Path("."),
         help="Project root directory",
     )
     init_parser.add_argument(
-        "--fresh", action="store_true",
+        "--fresh",
+        action="store_true",
         help="Discard the existing plan in .po/state.db (see 'po plan --fresh')",
     )
 
@@ -303,8 +365,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
 
     layers = get_execution_plan(spec.tasks)
     task_dicts: list[dict[str, Any]] = [
-        {"id": t.id, "description": t.description, "status": "pending"}
-        for t in spec.tasks
+        {"id": t.id, "description": t.description, "status": "pending"} for t in spec.tasks
     ]
     print(format_execution_plan(layers, task_dicts))
     print()
@@ -361,7 +422,11 @@ def cmd_plan(args: argparse.Namespace) -> None:
 
 
 _TASK_DEFINITION_FIELDS = (
-    "description", "dependencies", "context_files", "output_files", "verification",
+    "description",
+    "dependencies",
+    "context_files",
+    "output_files",
+    "verification",
 )
 _TASK_LIST_FIELDS = frozenset({"dependencies", "context_files", "output_files"})
 
@@ -412,8 +477,7 @@ def _plan_conflicts(store: SqliteTaskStore, spec: Any) -> list[str]:
     return [
         "The spec redefines tasks that already finished, and finished tasks never run "
         f"again:\n{shown}",
-        "Give them new ids, or use 'po plan --fresh' to discard the old plan and start "
-        "over.",
+        "Give them new ids, or use 'po plan --fresh' to discard the old plan and start over.",
     ]
 
 
@@ -485,7 +549,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         raw = t["output_files"]
         pending_outputs.extend(json.loads(raw) if isinstance(raw, str) else raw)
     problems = run_preflight(
-        project_root, pending_outputs,
+        project_root,
+        pending_outputs,
         allow_dirty=getattr(args, "allow_dirty", False),
     )
     if problems:
@@ -494,9 +559,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         conn.close()
         sys.exit(1)
 
-    max_concurrency = (
-        args.concurrency or int(project["max_concurrency"])
-    )
+    max_concurrency = args.concurrency or int(project["max_concurrency"])
     global_context = project.get("global_context") or ""
     global_context_files_raw = project.get("global_context_files", "[]")
     global_context_files: list[str] = (
@@ -612,10 +675,7 @@ def cmd_reset(args: argparse.Namespace) -> None:
             print(f"Reset task '{args.task}' to pending.")
         else:
             status = task["status"] if task else "not found"
-            print(
-                f"Warning: task '{args.task}' was not reset "
-                f"(current status: {status})."
-            )
+            print(f"Warning: task '{args.task}' was not reset (current status: {status}).")
     else:
         tasks = store.get_all_tasks()
         count = 0
@@ -681,6 +741,7 @@ def cmd_logs(args: argparse.Namespace) -> None:
             # Show local time as HH:MM:SS
             try:
                 from datetime import datetime
+
                 dt = datetime.fromisoformat(ts).astimezone()
                 ts_prefix = dt.strftime("%H:%M:%S") + " "
             except (ValueError, TypeError):
@@ -757,9 +818,7 @@ def cmd_clean(args: argparse.Namespace) -> None:
     # A task that failed after a merge or verification keeps its branch with
     # no worktree directory, so it is not in the listing above; `remove()` is
     # idempotent, so reap those branches too.
-    kept_branches = {
-        tid for tid in terminal_ids if _branch_exists(project_root, f"po/{tid}")
-    }
+    kept_branches = {tid for tid in terminal_ids if _branch_exists(project_root, f"po/{tid}")}
     if not worktrees and not kept_branches:
         print("No worktrees found.")
         return
@@ -781,10 +840,15 @@ def cmd_clean(args: argparse.Namespace) -> None:
 
 
 def _branch_exists(project_root: Path, branch: str) -> bool:
-    return subprocess.run(
-        ["git", "rev-parse", "--verify", "-q", f"refs/heads/{branch}"],
-        cwd=project_root, capture_output=True, check=False,
-    ).returncode == 0
+    return (
+        subprocess.run(
+            ["git", "rev-parse", "--verify", "-q", f"refs/heads/{branch}"],
+            cwd=project_root,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 def cmd_scan(args: argparse.Namespace) -> None:
@@ -848,8 +912,11 @@ def cmd_init(args: argparse.Namespace) -> None:
 
             try:
                 outline, session_id = generate_outline(
-                    description, model, project_root=project_root,
-                    feedback=feedback, session_id=session_id,
+                    description,
+                    model,
+                    project_root=project_root,
+                    feedback=feedback,
+                    session_id=session_id,
                 )
             except RuntimeError as e:
                 logger.error("%s", e)
@@ -869,7 +936,11 @@ def cmd_init(args: argparse.Namespace) -> None:
         print(f"\nGenerating full spec from outline (model={model})...")
         try:
             path = generate_spec_from_outline(
-                description, outline, output, model, project_root=project_root,
+                description,
+                outline,
+                output,
+                model,
+                project_root=project_root,
             )
         except (FileExistsError, ValueError, RuntimeError) as e:
             logger.error("%s", e)

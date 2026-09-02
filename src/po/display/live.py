@@ -80,8 +80,13 @@ class LiveDisplay:
         """Handle an orchestration event — implements EventCallback signature."""
         task_state = self._tasks.get(task_id)
         if task_state is None:
-            task_state = {"status": "pending", "description": "", "cost_usd": None,
-                          "error_message": None, "dependencies": []}
+            task_state = {
+                "status": "pending",
+                "description": "",
+                "cost_usd": None,
+                "error_message": None,
+                "dependencies": [],
+            }
             self._tasks[task_id] = task_state
 
         if event == "task_launched":

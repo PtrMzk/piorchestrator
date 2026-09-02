@@ -32,7 +32,10 @@ class TaskStore(Protocol):
     def set_status(self, task_id: str, status: str) -> None: ...
     def increment_attempt(self, task_id: str) -> None: ...
     def set_running(
-        self, task_id: str, worktree_path: str, branch_name: str,
+        self,
+        task_id: str,
+        worktree_path: str,
+        branch_name: str,
     ) -> None: ...
     def set_completed(
         self,
@@ -148,18 +151,14 @@ class SqliteTaskStore:
 
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         """Get a single task by ID."""
-        row = self.conn.execute(
-            "SELECT * FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if row is None:
             return None
         return dict(row)
 
     def get_all_tasks(self) -> list[dict[str, Any]]:
         """Get all tasks."""
-        rows = self.conn.execute(
-            "SELECT * FROM tasks ORDER BY priority DESC, id"
-        ).fetchall()
+        rows = self.conn.execute("SELECT * FROM tasks ORDER BY priority DESC, id").fetchall()
         return [dict(r) for r in rows]
 
     def clear(self) -> None:
@@ -174,9 +173,7 @@ class SqliteTaskStore:
 
     def get_project(self) -> dict[str, Any] | None:
         """Get project metadata."""
-        row = self.conn.execute(
-            "SELECT * FROM project WHERE id = 1"
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM project WHERE id = 1").fetchone()
         if row is None:
             return None
         return dict(row)
@@ -198,7 +195,10 @@ class SqliteTaskStore:
         self.conn.commit()
 
     def set_running(
-        self, task_id: str, worktree_path: str, branch_name: str,
+        self,
+        task_id: str,
+        worktree_path: str,
+        branch_name: str,
     ) -> None:
         """Mark a task as running with its worktree info."""
         now = datetime.now(UTC).isoformat()
@@ -230,9 +230,18 @@ class SqliteTaskStore:
                    agent_result = ?, session_id = ?, completed_at = ?,
                    input_tokens = ?, output_tokens = ?, num_turns = ?
                WHERE id = ?""",
-            (STATUS_COMPLETED, cost_usd, duration_ms,
-             agent_result, session_id, now,
-             input_tokens, output_tokens, num_turns, task_id),
+            (
+                STATUS_COMPLETED,
+                cost_usd,
+                duration_ms,
+                agent_result,
+                session_id,
+                now,
+                input_tokens,
+                output_tokens,
+                num_turns,
+                task_id,
+            ),
         )
         self.conn.commit()
 
@@ -256,9 +265,18 @@ class SqliteTaskStore:
                    session_id = ?, completed_at = ?,
                    input_tokens = ?, output_tokens = ?, num_turns = ?
                WHERE id = ?""",
-            (STATUS_FAILED, error_message, cost_usd,
-             duration_ms, session_id, now,
-             input_tokens, output_tokens, num_turns, task_id),
+            (
+                STATUS_FAILED,
+                error_message,
+                cost_usd,
+                duration_ms,
+                session_id,
+                now,
+                input_tokens,
+                output_tokens,
+                num_turns,
+                task_id,
+            ),
         )
         self.conn.commit()
 
@@ -360,9 +378,7 @@ class SqliteTaskStore:
         for tid in to_cancel:
             self.conn.execute(
                 "UPDATE tasks SET status = ?, error_message = ? WHERE id = ?",
-                (STATUS_CANCELLED,
-                 f"Cancelled: dependency '{task_id}' failed",
-                 tid),
+                (STATUS_CANCELLED, f"Cancelled: dependency '{task_id}' failed", tid),
             )
         self.conn.commit()
         return len(to_cancel)
@@ -391,4 +407,3 @@ class SqliteTaskStore:
             ),
         )
         self.conn.commit()
-

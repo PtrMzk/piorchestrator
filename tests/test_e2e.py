@@ -125,22 +125,31 @@ class TestE2E:
         }
 
         scripts = {
-            "init": [AgentScript(
-                files={"setup.py": "# setup\n"},
-                commit_message="Add setup",
-            )],
-            "models": [AgentScript(
-                files={"models.py": "# models\n"},
-                commit_message="Add models",
-            )],
-            "routes": [AgentScript(
-                files={"routes.py": "# routes\n"},
-                commit_message="Add routes",
-            )],
+            "init": [
+                AgentScript(
+                    files={"setup.py": "# setup\n"},
+                    commit_message="Add setup",
+                )
+            ],
+            "models": [
+                AgentScript(
+                    files={"models.py": "# models\n"},
+                    commit_message="Add models",
+                )
+            ],
+            "routes": [
+                AgentScript(
+                    files={"routes.py": "# routes\n"},
+                    commit_message="Add routes",
+                )
+            ],
         }
 
         store, calls, events = await run_orchestrator(
-            store, project_root, scripts, spec_dict,
+            store,
+            project_root,
+            scripts,
+            spec_dict,
         )
 
         # All 3 tasks completed
@@ -171,14 +180,25 @@ class TestE2E:
         spec_dict = {
             "project_name": "diamond",
             "tasks": [
-                {"id": "a", "description": "Root", "dependencies": [],
-                 "output_files": ["a.txt"]},
-                {"id": "b", "description": "Left", "dependencies": ["a"],
-                 "output_files": ["b.txt"]},
-                {"id": "c", "description": "Right", "dependencies": ["a"],
-                 "output_files": ["c.txt"]},
-                {"id": "d", "description": "Join", "dependencies": ["b", "c"],
-                 "output_files": ["d.txt"]},
+                {"id": "a", "description": "Root", "dependencies": [], "output_files": ["a.txt"]},
+                {
+                    "id": "b",
+                    "description": "Left",
+                    "dependencies": ["a"],
+                    "output_files": ["b.txt"],
+                },
+                {
+                    "id": "c",
+                    "description": "Right",
+                    "dependencies": ["a"],
+                    "output_files": ["c.txt"],
+                },
+                {
+                    "id": "d",
+                    "description": "Join",
+                    "dependencies": ["b", "c"],
+                    "output_files": ["d.txt"],
+                },
             ],
         }
 
@@ -190,7 +210,11 @@ class TestE2E:
         }
 
         store, calls, events = await run_orchestrator(
-            store, project_root, scripts, spec_dict, max_concurrency=2,
+            store,
+            project_root,
+            scripts,
+            spec_dict,
+            max_concurrency=2,
         )
 
         # All completed
@@ -216,27 +240,44 @@ class TestE2E:
         spec_dict = {
             "project_name": "failure-cascade",
             "tasks": [
-                {"id": "a", "description": "Root", "dependencies": [],
-                 "output_files": ["a.txt"]},
-                {"id": "b", "description": "Left", "dependencies": ["a"],
-                 "output_files": ["b.txt"]},
-                {"id": "c", "description": "Right", "dependencies": ["a"],
-                 "output_files": ["c.txt"]},
-                {"id": "d", "description": "Join", "dependencies": ["b", "c"],
-                 "output_files": ["d.txt"]},
+                {"id": "a", "description": "Root", "dependencies": [], "output_files": ["a.txt"]},
+                {
+                    "id": "b",
+                    "description": "Left",
+                    "dependencies": ["a"],
+                    "output_files": ["b.txt"],
+                },
+                {
+                    "id": "c",
+                    "description": "Right",
+                    "dependencies": ["a"],
+                    "output_files": ["c.txt"],
+                },
+                {
+                    "id": "d",
+                    "description": "Join",
+                    "dependencies": ["b", "c"],
+                    "output_files": ["d.txt"],
+                },
             ],
         }
 
         scripts = {
-            "a": [AgentScript(
-                files={},
-                commit=False,
-                failure_reason="broken",
-            )],
+            "a": [
+                AgentScript(
+                    files={},
+                    commit=False,
+                    failure_reason="broken",
+                )
+            ],
         }
 
         store, calls, events = await run_orchestrator(
-            store, project_root, scripts, spec_dict, max_retries=0,
+            store,
+            project_root,
+            scripts,
+            spec_dict,
+            max_retries=0,
         )
 
         # a failed
@@ -262,34 +303,41 @@ class TestE2E:
         spec_dict = {
             "project_name": "subtask-test",
             "tasks": [
-                {"id": "big-task", "description": "A big task",
-                 "output_files": []},
+                {"id": "big-task", "description": "A big task", "output_files": []},
             ],
         }
 
         scripts = {
-            "big-task": [AgentScript(
-                files={},
-                commit=False,
-                subtasks=[
-                    {"id": "sub-a", "description": "Sub A",
-                     "output_files": ["sub_a.txt"]},
-                    {"id": "sub-b", "description": "Sub B",
-                     "output_files": ["sub_b.txt"]},
-                ],
-            )],
-            "big-task/sub-a": [AgentScript(
-                files={"sub_a.txt": "sub-a output\n"},
-                commit_message="Add sub_a",
-            )],
-            "big-task/sub-b": [AgentScript(
-                files={"sub_b.txt": "sub-b output\n"},
-                commit_message="Add sub_b",
-            )],
+            "big-task": [
+                AgentScript(
+                    files={},
+                    commit=False,
+                    subtasks=[
+                        {"id": "sub-a", "description": "Sub A", "output_files": ["sub_a.txt"]},
+                        {"id": "sub-b", "description": "Sub B", "output_files": ["sub_b.txt"]},
+                    ],
+                )
+            ],
+            "big-task/sub-a": [
+                AgentScript(
+                    files={"sub_a.txt": "sub-a output\n"},
+                    commit_message="Add sub_a",
+                )
+            ],
+            "big-task/sub-b": [
+                AgentScript(
+                    files={"sub_b.txt": "sub-b output\n"},
+                    commit_message="Add sub_b",
+                )
+            ],
         }
 
         store, calls, events = await run_orchestrator(
-            store, project_root, scripts, spec_dict, max_concurrency=2,
+            store,
+            project_root,
+            scripts,
+            spec_dict,
+            max_concurrency=2,
         )
 
         # Parent is decomposed
@@ -315,8 +363,7 @@ class TestE2E:
         spec_dict = {
             "project_name": "retry-test",
             "tasks": [
-                {"id": "flaky", "description": "A flaky task",
-                 "output_files": ["result.txt"]},
+                {"id": "flaky", "description": "A flaky task", "output_files": ["result.txt"]},
             ],
         }
 
@@ -337,7 +384,11 @@ class TestE2E:
         }
 
         store, calls, events = await run_orchestrator(
-            store, project_root, scripts, spec_dict, max_retries=1,
+            store,
+            project_root,
+            scripts,
+            spec_dict,
+            max_retries=1,
         )
 
         # Task completed
@@ -364,10 +415,13 @@ class TestE2E:
         spec_dict = {
             "project_name": "events-test",
             "tasks": [
-                {"id": "a", "description": "First", "dependencies": [],
-                 "output_files": ["a.txt"]},
-                {"id": "b", "description": "Second", "dependencies": ["a"],
-                 "output_files": ["b.txt"]},
+                {"id": "a", "description": "First", "dependencies": [], "output_files": ["a.txt"]},
+                {
+                    "id": "b",
+                    "description": "Second",
+                    "dependencies": ["a"],
+                    "output_files": ["b.txt"],
+                },
             ],
         }
 
@@ -377,7 +431,10 @@ class TestE2E:
         }
 
         store, calls, events = await run_orchestrator(
-            store, project_root, scripts, spec_dict,
+            store,
+            project_root,
+            scripts,
+            spec_dict,
         )
 
         event_tuples = [(e[0], e[1]) for e in events]

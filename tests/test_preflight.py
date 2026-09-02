@@ -51,7 +51,9 @@ class TestGitIdentity:
         assert "git config --global user.email" in problem
 
     def test_identity_from_environment(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
         monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)

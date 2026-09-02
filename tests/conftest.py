@@ -25,6 +25,7 @@ def _reset_procs():
     yield
     procs.reset()
 
+
 # ──────────────────────────── Sample data ────────────────────────────
 
 
@@ -126,24 +127,36 @@ def git_repo(tmp_path: Path) -> Path:
     # -b main: the merger and several tests assume 'main'; without this the
     # branch name comes from the machine's init.defaultBranch (often 'master').
     subprocess.run(
-        ["git", "init", "-b", "main"], cwd=repo, capture_output=True, check=True,
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test"],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
     # Create initial commit
     (repo / "README.md").write_text("# Test\n")
     subprocess.run(
-        ["git", "add", "."], cwd=repo, capture_output=True, check=True,
+        ["git", "add", "."],
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
     return repo
 
@@ -172,12 +185,14 @@ class MockAgentRunner:
         project_root: Path = Path("."),
         max_budget_usd: float | None = None,
     ) -> AgentResult:
-        self.calls.append({
-            "task_id": task_id,
-            "prompt": prompt,
-            "worktree_path": worktree_path,
-            "model": model,
-        })
+        self.calls.append(
+            {
+                "task_id": task_id,
+                "prompt": prompt,
+                "worktree_path": worktree_path,
+                "model": model,
+            }
+        )
         if task_id in self.outcomes:
             return self.outcomes[task_id]
         return AgentResult(

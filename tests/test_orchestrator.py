@@ -382,12 +382,14 @@ class TestPrepareRepo:
 
     def _git(self, args: list[str], cwd: Path) -> str:
         return subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, check=True,
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout
 
-    def test_commits_gitignore_before_any_branch(
-        self, git_repo: Path, tmp_path: Path
-    ) -> None:
+    def test_commits_gitignore_before_any_branch(self, git_repo: Path, tmp_path: Path) -> None:
         """A committed .gitignore is inherited by task branches instead of invented.
 
         When the merge committed it mid-run, every scaffolding task that wrote
@@ -430,9 +432,7 @@ class TestPrepareRepo:
 
         assert self._git(["rev-list", "--count", "HEAD"], git_repo).strip() == before
 
-    def test_agent_gitignore_merges_without_conflict(
-        self, git_repo: Path, tmp_path: Path
-    ) -> None:
+    def test_agent_gitignore_merges_without_conflict(self, git_repo: Path, tmp_path: Path) -> None:
         """The scaffold scenario end to end: both sides want a .gitignore.
 
         Previously main got its .gitignore commit *during* the merge, after the
@@ -447,7 +447,9 @@ class TestPrepareRepo:
         (git_repo / ".gitignore").write_text("node_modules\ndist\n.vite\n")
         subprocess.run(["git", "add", ".gitignore"], cwd=git_repo, check=True)
         subprocess.run(
-            ["git", "commit", "-m", "Scaffold repo"], cwd=git_repo, check=True,
+            ["git", "commit", "-m", "Scaffold repo"],
+            cwd=git_repo,
+            check=True,
         )
         subprocess.run(["git", "checkout", "main"], cwd=git_repo, check=True)
 
@@ -497,9 +499,7 @@ class TestShutdownLeavesTasksResumable:
         orch = self._loop_with_task(tmp_path, sample_spec)
         orch._shutting_down = True
 
-        await orch._process_result(
-            AgentResult(task_id=sample_spec.tasks[0].id, success=True)
-        )
+        await orch._process_result(AgentResult(task_id=sample_spec.tasks[0].id, success=True))
 
         assert orch.merger.merged == []
 
@@ -510,7 +510,9 @@ class TestShutdownLeavesTasksResumable:
         orch = self._loop_with_task(tmp_path, sample_spec)
         proc = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(60)"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
         )
         procs.register(proc)
 
@@ -530,7 +532,9 @@ class TestWorktreeSetup:
 
     @staticmethod
     def _loop(
-        tmp_path: Path, sample_spec: ProjectSpec, setup: str,
+        tmp_path: Path,
+        sample_spec: ProjectSpec,
+        setup: str,
     ) -> OrchestratorLoop:
         project_root = tmp_path / "project"
         project_root.mkdir(exist_ok=True)
@@ -579,9 +583,7 @@ class TestWorktreeSetup:
         assert ("task_setup_failed", sample_spec.tasks[0].id, "no-manifest") in events
 
     @pytest.mark.asyncio
-    async def test_setup_output_is_logged(
-        self, tmp_path: Path, sample_spec: ProjectSpec
-    ) -> None:
+    async def test_setup_output_is_logged(self, tmp_path: Path, sample_spec: ProjectSpec) -> None:
         task_id = sample_spec.tasks[0].id
         orch = self._loop(tmp_path, sample_spec, "echo installing-deps")
 

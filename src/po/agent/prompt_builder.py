@@ -59,8 +59,7 @@ def build_prompt(
 
     parts.append("\n## Rules")
     parts.append(
-        "- Follow TDD: write a failing test first, then implement "
-        "the minimum code to make it pass."
+        "- Follow TDD: write a failing test first, then implement the minimum code to make it pass."
     )
     parts.append("- Commit after every meaningful change to protect against timeouts.")
     parts.append("- Keep changes focused on the task description above.")

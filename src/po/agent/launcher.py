@@ -69,12 +69,17 @@ class ClaudeCodeRunner:
 
         cmd = [
             "claude",
-            "-p", prompt,
+            "-p",
+            prompt,
             "--verbose",
-            "--output-format", "stream-json",
-            "--model", model,
-            "--max-turns", str(max_turns),
-            "--permission-mode", "bypassPermissions",
+            "--output-format",
+            "stream-json",
+            "--model",
+            model,
+            "--max-turns",
+            str(max_turns),
+            "--permission-mode",
+            "bypassPermissions",
         ]
 
         if max_budget_usd is not None:
@@ -182,7 +187,9 @@ class ClaudeCodeRunner:
         success = proc.returncode == 0
         logger.debug(
             "Agent %s exited with code %d (%.1fs)",
-            task_id, proc.returncode, duration_ms / 1000,
+            task_id,
+            proc.returncode,
+            duration_ms / 1000,
         )
 
         # Check for subtasks file
@@ -204,10 +211,7 @@ class ClaudeCodeRunner:
                 error_message = failure_data.get("reason", "Unknown failure")
                 success = False
             except (json.JSONDecodeError, KeyError, TypeError):
-                error_message = (
-                    "Agent reported failure "
-                    "(could not parse .po-failure.json)"
-                )
+                error_message = "Agent reported failure (could not parse .po-failure.json)"
                 success = False
 
         if not success and error_message is None:

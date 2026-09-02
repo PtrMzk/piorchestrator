@@ -32,7 +32,11 @@ def _make_mock_popen(returncode: int = 0, stdout: bytes = b"") -> MagicMock:
 
 def _git(args: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=check,
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=check,
     )
 
 
@@ -117,7 +121,10 @@ class TestRebaseMergerCleanMerge:
         log_before = _git(["rev-list", "--count", "HEAD"], git_repo).stdout.strip()
 
         result = merger._merge_sync(
-            branch, "task-vf", "python -c 'raise SystemExit(1)'", git_repo,
+            branch,
+            "task-vf",
+            "python -c 'raise SystemExit(1)'",
+            git_repo,
         )
         assert result.success is False
         assert "verification failed" in result.error_message.lower()
@@ -154,7 +161,8 @@ class TestRebaseMergerConflict:
 
         with patch.object(merger, "_try_agent_merge") as mock_agent:
             mock_agent.return_value = MergeResult(
-                success=True, needed_agent_resolution=True,
+                success=True,
+                needed_agent_resolution=True,
             )
             result = merger._merge_sync("po/conflict-1", "conflict-1", "", git_repo)
             assert result.success is True
@@ -232,7 +240,10 @@ class TestTryAgentMerge:
         with patch.object(merger, "_invoke_merge_agent") as mock_invoke:
             mock_invoke.return_value = False
             result = merger._try_agent_merge(
-                "po/real-conflict", "real-conflict", git_repo, "",
+                "po/real-conflict",
+                "real-conflict",
+                git_repo,
+                "",
             )
             assert result.success is False
             assert "could not resolve" in result.error_message.lower()
@@ -244,7 +255,10 @@ class TestTryAgentMerge:
         branch = _make_clean_branch(git_repo, "po/agent-ok", "agent.py", "ok = True")
 
         result = merger._try_agent_merge(
-            branch, "agent-ok", git_repo, "python -c 'print(1)'",
+            branch,
+            "agent-ok",
+            git_repo,
+            "python -c 'print(1)'",
         )
         assert result.success is True
 
@@ -256,7 +270,10 @@ class TestTryAgentMerge:
         log_before = _git(["rev-list", "--count", "HEAD"], git_repo).stdout.strip()
 
         result = merger._try_agent_merge(
-            branch, "agent-vfail", git_repo, "python -c 'raise SystemExit(1)'",
+            branch,
+            "agent-vfail",
+            git_repo,
+            "python -c 'raise SystemExit(1)'",
         )
         assert result.success is False
         assert "verification failed" in result.error_message.lower()
@@ -283,7 +300,10 @@ class TestTryAgentMerge:
             patch.object(merger, "_invoke_merge_agent", return_value=False),
         ):
             merger._try_agent_merge(
-                "po/abort-test", "abort-test", git_repo, "",
+                "po/abort-test",
+                "abort-test",
+                git_repo,
+                "",
             )
 
         abort_calls = [c for c in calls if c == ["merge", "--abort"]]
@@ -464,7 +484,7 @@ class TestMergeAgentSubprocess:
             # anything reaches stdout, so the deadlock would trigger first.
             "sys.stderr.write('x' * 1_000_000)\n"
             "sys.stderr.flush()\n"
-            "print('{\"type\": \"result\", \"result\": \"done\"}')\n",
+            'print(\'{"type": "result", "result": "done"}\')\n',
         )
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
 
@@ -655,9 +675,7 @@ class TestMergeInterruption:
         head = _git(["rev-parse", "--abbrev-ref", "HEAD"], git_repo).stdout.strip()
         assert head == "main"
 
-    def test_cancelled_merge_does_not_invoke_the_merge_agent(
-        self, git_repo: Path
-    ) -> None:
+    def test_cancelled_merge_does_not_invoke_the_merge_agent(self, git_repo: Path) -> None:
         """Shutdown must not spawn a fresh Claude agent on the way out."""
         _make_conflicting_branch(git_repo, "po/no-agent", "README.md", "branch\n")
         _commit_file(git_repo, "README.md", "main\n", "Main side")

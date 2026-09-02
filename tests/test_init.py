@@ -400,7 +400,9 @@ class TestCodebaseDocsInPrompts:
         (docs_dir / "index.md").write_text("# Index\n")
 
         prompt = _build_spec_from_outline_prompt(
-            "test project", "## outline", project_root=tmp_path,
+            "test project",
+            "## outline",
+            project_root=tmp_path,
         )
         assert "docs/codebase/index.md" in prompt
         assert "global_context_files" in prompt
@@ -446,9 +448,7 @@ class TestInvokeClaudeSubprocess:
             tmp_path / "bin",
             # 1 MB of stderr — far past the ~64KB pipe buffer — written before
             # the result line so the deadlock would trigger prior to any stdout.
-            "sys.stderr.write('x' * 1_000_000)\n"
-            "sys.stderr.flush()\n"
-            f"print({result!r})\n",
+            f"sys.stderr.write('x' * 1_000_000)\nsys.stderr.flush()\nprint({result!r})\n",
         )
         monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 
@@ -458,7 +458,9 @@ class TestInvokeClaudeSubprocess:
         assert session_id == "s1"
 
     def test_missing_claude_is_a_runtime_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """`cmd_init` catches RuntimeError; a bare FileNotFoundError was a traceback."""
         monkeypatch.setenv("PATH", str(tmp_path / "empty"))
@@ -478,15 +480,12 @@ class TestInvokeClaudeSubprocess:
         with pytest.raises(RuntimeError, match="rate limit exceeded"):
             _invoke_claude("prompt", "sonnet", project_root=tmp_path)
 
-    def test_stdin_is_closed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stdin_is_closed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """stdin must be /dev/null so a prompting child cannot hang the run."""
         result = json.dumps({"type": "result", "result": "ok"})
         self._stub_claude(
             tmp_path / "bin",
-            "assert sys.stdin.read() == '', 'stdin was not empty'\n"
-            f"print({result!r})\n",
+            f"assert sys.stdin.read() == '', 'stdin was not empty'\nprint({result!r})\n",
         )
         monkeypatch.setenv("PATH", str(tmp_path / "bin"))
 

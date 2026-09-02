@@ -133,9 +133,7 @@ class TestKillGroup:
 
     def test_sigkill_escalation_for_a_process_ignoring_sigterm(self) -> None:
         proc = _spawn(
-            "import signal, time\n"
-            "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
-            "time.sleep(60)"
+            "import signal, time\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\ntime.sleep(60)"
         )
         time.sleep(0.5)
 

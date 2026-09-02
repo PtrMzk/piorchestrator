@@ -68,31 +68,24 @@ class TestInvokeScanAgentSubprocess:
             tmp_path / "bin",
             # 1 MB of stderr — far past the ~64KB pipe buffer — written before
             # the result line so the deadlock would trigger prior to any stdout.
-            "sys.stderr.write('x' * 1_000_000)\n"
-            "sys.stderr.flush()\n"
-            f"print({result!r})\n",
+            f"sys.stderr.write('x' * 1_000_000)\nsys.stderr.flush()\nprint({result!r})\n",
         )
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
 
         assert _invoke_scan_agent("prompt", "sonnet", tmp_path) == "scanned"
 
-    def test_stdin_is_closed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stdin_is_closed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """stdin must be /dev/null so a prompting child cannot hang the scan."""
         result = json.dumps({"type": "result", "result": "ok"})
         self._stub_claude(
             tmp_path / "bin",
-            "assert sys.stdin.read() == '', 'stdin was not empty'\n"
-            f"print({result!r})\n",
+            f"assert sys.stdin.read() == '', 'stdin was not empty'\nprint({result!r})\n",
         )
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
 
         assert _invoke_scan_agent("prompt", "sonnet", tmp_path) == "ok"
 
-    def test_auth_env_survives(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_auth_env_survives(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Auth vars must reach the scan agent; only nesting markers are dropped."""
         self._stub_claude(
             tmp_path / "bin",

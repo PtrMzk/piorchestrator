@@ -50,10 +50,7 @@ _MIGRATIONS: dict[str, list[tuple[str, str]]] = {
 def _migrate(conn: sqlite3.Connection) -> None:
     """Add columns that may be missing in older databases."""
     for table, migrations in _MIGRATIONS.items():
-        existing = {
-            row[1]
-            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-        }
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         for col, col_type in migrations:
             if col not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")

@@ -87,24 +87,28 @@ def _emit(obj: dict) -> None:
 
 def _emit_result(text: str) -> None:
     """Emit the standard assistant + result JSONL pair."""
-    _emit({
-        "type": "assistant",
-        "message": {"content": [{"type": "text", "text": "Working..."}]},
-    })
-    _emit({
-        "type": "result",
-        "result": text,
-        "cost_usd": 0.01,
-        "total_cost_usd": 0.01,
-        "session_id": f"mock-{uuid.uuid4().hex[:8]}",
-        "num_turns": 1,
-        "usage": {
-            "input_tokens": 100,
-            "output_tokens": 50,
-            "cache_read_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-        },
-    })
+    _emit(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "Working..."}]},
+        }
+    )
+    _emit(
+        {
+            "type": "result",
+            "result": text,
+            "cost_usd": 0.01,
+            "total_cost_usd": 0.01,
+            "session_id": f"mock-{uuid.uuid4().hex[:8]}",
+            "num_turns": 1,
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+            },
+        }
+    )
 
 
 def _parse_output_files(prompt: str) -> list[str]:
@@ -156,9 +160,7 @@ def main() -> None:
         if "mock:fail" in prompt:
             from pathlib import Path
 
-            Path(".po-failure.json").write_text(
-                json.dumps({"reason": "mock agent gave up"})
-            )
+            Path(".po-failure.json").write_text(json.dumps({"reason": "mock agent gave up"}))
             _emit_result("Could not complete the task.")
             return
 

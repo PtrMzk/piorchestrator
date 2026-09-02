@@ -199,8 +199,7 @@ class TestCmdPlan:
 
     def test_scaffold_and_docs_default_off(self) -> None:
         """Untracked stubs in the project root break merges, so both are opt-in."""
-        with patch("sys.argv", ["po", "plan", "spec.json"]), \
-                patch("po.cli.cmd_plan") as mock_plan:
+        with patch("sys.argv", ["po", "plan", "spec.json"]), patch("po.cli.cmd_plan") as mock_plan:
             main()
         args = mock_plan.call_args[0][0]
         assert args.scaffold is False
@@ -215,10 +214,15 @@ class TestCmdPlan:
             return output
 
         args = _make_namespace(
-            description="x", output=spec_file, model="haiku", project_root=tmp_path,
+            description="x",
+            output=spec_file,
+            model="haiku",
+            project_root=tmp_path,
         )
-        with patch("po.cli.generate_spec", side_effect=fake_generate_spec), \
-                patch("sys.stdin") as mock_stdin:
+        with (
+            patch("po.cli.generate_spec", side_effect=fake_generate_spec),
+            patch("sys.stdin") as mock_stdin,
+        ):
             mock_stdin.isatty.return_value = False
             cmd_init(args)
 
@@ -297,8 +301,10 @@ class TestCmdInitInteractive:
 
     def _args(self, tmp_path: Path) -> Any:
         return _make_namespace(
-            description="build a thing", output=tmp_path / "spec.json",
-            model="haiku", project_root=tmp_path,
+            description="build a thing",
+            output=tmp_path / "spec.json",
+            model="haiku",
+            project_root=tmp_path,
         )
 
     def _fake_spec_from_outline(self, description, outline, output, model, project_root=None):
@@ -306,11 +312,14 @@ class TestCmdInitInteractive:
         return output
 
     def test_approve_first_outline(self, tmp_path: Path) -> None:
-        with patch("po.cli.sys.stdin") as stdin, \
-                patch("po.cli.generate_outline", return_value=("- outline", "sess-1")) as go, \
-                patch("po.cli.generate_spec_from_outline",
-                      side_effect=self._fake_spec_from_outline) as gs, \
-                patch("builtins.input", return_value="y"):
+        with (
+            patch("po.cli.sys.stdin") as stdin,
+            patch("po.cli.generate_outline", return_value=("- outline", "sess-1")) as go,
+            patch(
+                "po.cli.generate_spec_from_outline", side_effect=self._fake_spec_from_outline
+            ) as gs,
+            patch("builtins.input", return_value="y"),
+        ):
             stdin.isatty.return_value = True
             cmd_init(self._args(tmp_path))
 
@@ -325,11 +334,14 @@ class TestCmdInitInteractive:
         def next_outline(*_a, **_k):
             return next(outlines)
 
-        with patch("po.cli.sys.stdin") as stdin, \
-                patch("po.cli.generate_outline", side_effect=next_outline) as go, \
-                patch("po.cli.generate_spec_from_outline",
-                      side_effect=self._fake_spec_from_outline) as gs, \
-                patch("builtins.input", side_effect=["split the setup task", "y"]):
+        with (
+            patch("po.cli.sys.stdin") as stdin,
+            patch("po.cli.generate_outline", side_effect=next_outline) as go,
+            patch(
+                "po.cli.generate_spec_from_outline", side_effect=self._fake_spec_from_outline
+            ) as gs,
+            patch("builtins.input", side_effect=["split the setup task", "y"]),
+        ):
             stdin.isatty.return_value = True
             cmd_init(self._args(tmp_path))
 
@@ -340,21 +352,27 @@ class TestCmdInitInteractive:
         assert gs.call_args.args[1] == "- second"
 
     def test_outline_failure_exits(self, tmp_path: Path) -> None:
-        with patch("po.cli.sys.stdin") as stdin, \
-                patch("po.cli.generate_outline", side_effect=RuntimeError("claude broke")), \
-                pytest.raises(SystemExit) as exc:
+        with (
+            patch("po.cli.sys.stdin") as stdin,
+            patch("po.cli.generate_outline", side_effect=RuntimeError("claude broke")),
+            pytest.raises(SystemExit) as exc,
+        ):
             stdin.isatty.return_value = True
             cmd_init(self._args(tmp_path))
         assert exc.value.code == 1
         assert not (tmp_path / "spec.json").exists()
 
     def test_spec_failure_after_approval_exits(self, tmp_path: Path) -> None:
-        with patch("po.cli.sys.stdin") as stdin, \
-                patch("po.cli.generate_outline", return_value=("- outline", None)), \
-                patch("po.cli.generate_spec_from_outline",
-                      side_effect=ValueError("Generated spec failed validation")), \
-                patch("builtins.input", return_value=""), \
-                pytest.raises(SystemExit) as exc:
+        with (
+            patch("po.cli.sys.stdin") as stdin,
+            patch("po.cli.generate_outline", return_value=("- outline", None)),
+            patch(
+                "po.cli.generate_spec_from_outline",
+                side_effect=ValueError("Generated spec failed validation"),
+            ),
+            patch("builtins.input", return_value=""),
+            pytest.raises(SystemExit) as exc,
+        ):
             stdin.isatty.return_value = True
             cmd_init(self._args(tmp_path))
         assert exc.value.code == 1
@@ -367,10 +385,16 @@ class TestPlanOverExistingPlan:
     def _plan(self, tmp_path: Path, spec_dict: dict, fresh: bool = False) -> None:
         spec_file = tmp_path / f"spec-{fresh}.json"
         spec_file.write_text(json.dumps(spec_dict))
-        cmd_plan(_make_namespace(
-            spec_file=spec_file, project_root=tmp_path, playground=False,
-            scaffold=False, generate_docs=False, fresh=fresh,
-        ))
+        cmd_plan(
+            _make_namespace(
+                spec_file=spec_file,
+                project_root=tmp_path,
+                playground=False,
+                scaffold=False,
+                generate_docs=False,
+                fresh=fresh,
+            )
+        )
 
     def _complete(self, tmp_path: Path, task_id: str) -> None:
         conn = init_db(state_db_path(tmp_path))
@@ -428,12 +452,16 @@ class TestPlanOverExistingPlan:
         assert self._status(tmp_path, "task-b") is None
 
     def test_parser_accepts_fresh(self) -> None:
-        with patch("sys.argv", ["po", "plan", "spec.json", "--fresh"]), \
-                patch("po.cli.cmd_plan") as mock_plan:
+        with (
+            patch("sys.argv", ["po", "plan", "spec.json", "--fresh"]),
+            patch("po.cli.cmd_plan") as mock_plan,
+        ):
             main()
         assert mock_plan.call_args[0][0].fresh is True
-        with patch("sys.argv", ["po", "init", "desc", "--fresh"]), \
-                patch("po.cli.cmd_init") as mock_init:
+        with (
+            patch("sys.argv", ["po", "init", "desc", "--fresh"]),
+            patch("po.cli.cmd_init") as mock_init,
+        ):
             main()
         assert mock_init.call_args[0][0].fresh is True
 
@@ -475,12 +503,18 @@ class TestCmdRun:
         project_root, conn, _ = _setup_planned_project(tmp_path)
         conn.close()
         args = _make_namespace(
-            spec_file=None, project_root=project_root, concurrency=None,
-            max_retries=1, model=None, max_turns=None,
+            spec_file=None,
+            project_root=project_root,
+            concurrency=None,
+            max_retries=1,
+            model=None,
+            max_turns=None,
         )
-        with patch("po.cli.run_preflight", return_value=["claude missing"]) as pf, \
-                patch("po.cli.OrchestratorLoop") as mock_loop_cls, \
-                pytest.raises(SystemExit) as exc:
+        with (
+            patch("po.cli.run_preflight", return_value=["claude missing"]) as pf,
+            patch("po.cli.OrchestratorLoop") as mock_loop_cls,
+            pytest.raises(SystemExit) as exc,
+        ):
             cmd_run(args)
         assert exc.value.code == 1
         mock_loop_cls.assert_not_called()
@@ -500,8 +534,10 @@ class TestCmdRun:
             max_turns=20,
         )
 
-        with patch("po.cli.run_preflight", return_value=[]), \
-                patch("po.cli.OrchestratorLoop") as mock_loop_cls:
+        with (
+            patch("po.cli.run_preflight", return_value=[]),
+            patch("po.cli.OrchestratorLoop") as mock_loop_cls,
+        ):
             mock_instance = MagicMock()
             mock_instance.run = MagicMock(return_value=None)
             mock_loop_cls.return_value = mock_instance
@@ -584,8 +620,11 @@ class TestCmdCost:
     def test_shows_cost(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         project_root, conn, store = _setup_planned_project(tmp_path)
         store.set_completed(
-            "task-a", cost_usd=0.15,
-            input_tokens=50000, output_tokens=3000, num_turns=10,
+            "task-a",
+            cost_usd=0.15,
+            input_tokens=50000,
+            output_tokens=3000,
+            num_turns=10,
         )
         conn.close()
 
@@ -653,7 +692,9 @@ class TestCmdLogs:
         assert "0.05" in captured.out
 
     def test_parsed_output_with_blocks(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         log_dir = tmp_path / ".po" / "logs"
         log_dir.mkdir(parents=True)
@@ -682,7 +723,9 @@ class TestCmdLogs:
         assert "[Tool Call] write_file" in captured.out
 
     def test_malformed_json_printed_as_is(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         log_dir = tmp_path / ".po" / "logs"
         log_dir.mkdir(parents=True)
@@ -718,7 +761,9 @@ class TestCmdClean:
         assert "No worktrees" in captured.out
 
     def test_cleans_terminal_task_worktrees(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         from po.worktree.manager import WorktreeInfo
 
@@ -779,6 +824,7 @@ class TestCmdRunDisplayMode:
             # LiveDisplay should have been used as on_event callback
             call_kwargs = mock_loop_cls.call_args[1]
             from po.display.live import LiveDisplay
+
             assert isinstance(call_kwargs["on_event"], LiveDisplay)
 
     def test_cmd_run_uses_simple_printer_non_tty(self, tmp_path: Path) -> None:

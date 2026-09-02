@@ -417,10 +417,13 @@ def _invoke_claude(
     env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "128000"
     cmd = [
         "claude",
-        "-p", prompt,
+        "-p",
+        prompt,
         "--verbose",
-        "--output-format", "stream-json",
-        "--model", model,
+        "--output-format",
+        "stream-json",
+        "--model",
+        model,
     ]
     if session_id:
         cmd.extend(["--resume", session_id])

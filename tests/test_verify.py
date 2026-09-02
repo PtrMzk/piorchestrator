@@ -19,7 +19,9 @@ def _log(tmp_path: Path) -> Path:
 class TestRunVerification:
     def test_success(self, tmp_path: Path) -> None:
         outcome = run_verification(
-            f"{sys.executable} -c 'print(1)'", tmp_path, _log(tmp_path),
+            f"{sys.executable} -c 'print(1)'",
+            tmp_path,
+            _log(tmp_path),
         )
         assert outcome.ok is True
 
@@ -59,7 +61,9 @@ class TestRunVerification:
     def test_log_file_records_output(self, tmp_path: Path) -> None:
         log = _log(tmp_path)
         run_verification(
-            f"{sys.executable} -c \"print('hello log')\"", tmp_path, log,
+            f"{sys.executable} -c \"print('hello log')\"",
+            tmp_path,
+            log,
         )
         content = log.read_text()
         assert "Exit code: 0" in content
@@ -77,7 +81,9 @@ class TestRunVerification:
         command into exit 127, so this must fail without raising either way.
         """
         outcome = run_verification(
-            "definitely-not-a-real-binary --check", tmp_path, _log(tmp_path),
+            "definitely-not-a-real-binary --check",
+            tmp_path,
+            _log(tmp_path),
         )
         assert outcome.ok is False
         assert "not found" in outcome.detail
@@ -112,7 +118,9 @@ class TestShellOperators:
 
     def test_pipes_and_redirection_work(self, tmp_path: Path) -> None:
         outcome = run_verification(
-            "echo hello | grep -q hello", tmp_path, _log(tmp_path),
+            "echo hello | grep -q hello",
+            tmp_path,
+            _log(tmp_path),
         )
         assert outcome.ok is True
 
@@ -123,7 +131,9 @@ class TestShellOperators:
 
     def test_nonzero_exit_of_last_command_wins(self, tmp_path: Path) -> None:
         outcome = run_verification(
-            "echo ok && exit 3", tmp_path, _log(tmp_path),
+            "echo ok && exit 3",
+            tmp_path,
+            _log(tmp_path),
         )
         assert outcome.ok is False
 
@@ -148,7 +158,9 @@ class TestTimeout:
         log = _log(tmp_path)
         run_verification(
             f"{sys.executable} -c 'import time; time.sleep(60)'",
-            tmp_path, log, timeout=1.0,
+            tmp_path,
+            log,
+            timeout=1.0,
         )
         assert "timed out after 1s" in log.read_text()
 
@@ -167,7 +179,10 @@ class TestTimeout:
         )
         start = time.monotonic()
         outcome = run_verification(
-            f"{sys.executable} -c {script!r}", tmp_path, _log(tmp_path), timeout=2.0,
+            f"{sys.executable} -c {script!r}",
+            tmp_path,
+            _log(tmp_path),
+            timeout=2.0,
         )
         elapsed = time.monotonic() - start
 

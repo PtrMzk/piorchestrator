@@ -32,8 +32,7 @@ def _build_spec() -> dict[str, Any]:
                 "context_files": ["README.md"],
                 "output_files": ["src/calc/__init__.py"],
                 "verification": (
-                    'python -c "from calc import Calculator; '
-                    'assert Calculator().add(1, 2) == 3"'
+                    'python -c "from calc import Calculator; assert Calculator().add(1, 2) == 3"'
                 ),
                 "priority": 10,
                 "max_budget_usd": 0.50,
@@ -67,9 +66,9 @@ def _build_spec() -> dict[str, Any]:
                 "context_files": ["src/calc/__init__.py"],
                 "output_files": ["src/calc/__init__.py"],
                 "verification": (
-                    "python -c \""
+                    'python -c "'
                     "from calc import Calculator; c = Calculator(); "
-                    "assert c.multiply(3, 4) == 12; assert c.divide(10, 2) == 5.0\""
+                    'assert c.multiply(3, 4) == 12; assert c.divide(10, 2) == 5.0"'
                 ),
                 "priority": 8,
                 "max_budget_usd": 0.50,

@@ -98,15 +98,12 @@ class ProjectSpec:
         if not self.tasks:
             errors.append("Project must have at least one task")
         if len(self.tasks) > MAX_TASKS:
-            errors.append(
-                f"Project has {len(self.tasks)} tasks (max {MAX_TASKS})"
-            )
+            errors.append(f"Project has {len(self.tasks)} tasks (max {MAX_TASKS})")
         if self.max_concurrency < 1:
             errors.append("max_concurrency must be at least 1")
         if len(self.user_stories) > MAX_USER_STORIES:
             errors.append(
-                f"Project has {len(self.user_stories)} user stories "
-                f"(max {MAX_USER_STORIES})"
+                f"Project has {len(self.user_stories)} user stories (max {MAX_USER_STORIES})"
             )
 
         # Validate individual tasks

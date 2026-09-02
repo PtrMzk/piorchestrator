@@ -46,9 +46,11 @@ class TestGenerateDocTree:
         assert "API_CONTRACTS.md" in names
 
     def test_no_tags_no_components(self, tmp_path: Path) -> None:
-        spec = _make_spec(tasks=[
-            {"id": "t1", "description": "No tags task", "output_files": ["x.py"]},
-        ])
+        spec = _make_spec(
+            tasks=[
+                {"id": "t1", "description": "No tags task", "output_files": ["x.py"]},
+            ]
+        )
         created = generate_doc_tree(spec, tmp_path)
         assert len(created) == 4  # CLAUDE.md + 3 L1 docs
         assert not (tmp_path / "docs" / "components").exists()
@@ -122,10 +124,12 @@ class TestCodePaths:
         assert "`src/b.py`" in content
 
     def test_shared_files_map_to_multiple_tasks(self, tmp_path: Path) -> None:
-        spec = _make_spec(tasks=[
-            {"id": "t1", "description": "A", "output_files": ["shared.py"]},
-            {"id": "t2", "description": "B", "output_files": ["shared.py"]},
-        ])
+        spec = _make_spec(
+            tasks=[
+                {"id": "t1", "description": "A", "output_files": ["shared.py"]},
+                {"id": "t2", "description": "B", "output_files": ["shared.py"]},
+            ]
+        )
         generate_doc_tree(spec, tmp_path)
         content = (tmp_path / "docs" / "CODE_PATHS.md").read_text(encoding="utf-8")
         assert "t1" in content
@@ -147,9 +151,11 @@ class TestComponentDocs:
         assert "t1" not in core_doc
 
     def test_tag_filenames_uppercased(self, tmp_path: Path) -> None:
-        spec = _make_spec(tasks=[
-            {"id": "t1", "description": "A", "output_files": ["x.py"], "tags": ["my-tag"]},
-        ])
+        spec = _make_spec(
+            tasks=[
+                {"id": "t1", "description": "A", "output_files": ["x.py"], "tags": ["my-tag"]},
+            ]
+        )
         generate_doc_tree(spec, tmp_path)
         assert (tmp_path / "docs" / "components" / "MY-TAG.md").exists()
 
@@ -171,9 +177,11 @@ class TestClaudeMdContent:
         assert "core" in content
 
     def test_no_component_links_without_tags(self, tmp_path: Path) -> None:
-        spec = _make_spec(tasks=[
-            {"id": "t1", "description": "A", "output_files": ["x.py"]},
-        ])
+        spec = _make_spec(
+            tasks=[
+                {"id": "t1", "description": "A", "output_files": ["x.py"]},
+            ]
+        )
         generate_doc_tree(spec, tmp_path)
         content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         assert "Components" not in content

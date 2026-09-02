@@ -68,9 +68,7 @@ def generate_doc_tree(spec: ProjectSpec, project_root: Path) -> list[Path]:
         components_dir.mkdir(parents=True, exist_ok=True)
         for tag in sorted(tags):
             component_file = components_dir / f"{tag.upper()}.md"
-            component_file.write_text(
-                _build_component_doc(spec, tag), encoding="utf-8"
-            )
+            component_file.write_text(_build_component_doc(spec, tag), encoding="utf-8")
             created.append(component_file)
 
     return created

@@ -35,16 +35,17 @@ from po.db.queries import SqliteTaskStore
 def integration_env(git_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """A real git repo (via ``git_repo``) with a mock ``claude`` on PATH."""
     subprocess.run(
-        ["git", "branch", "-M", "main"], cwd=git_repo, capture_output=True, check=False,
+        ["git", "branch", "-M", "main"],
+        cwd=git_repo,
+        capture_output=True,
+        check=False,
     )
 
     mock_bin = tmp_path / "mock_bin"
     mock_bin.mkdir()
     mock_claude_py = Path(__file__).parent / "mock_claude.py"
     claude_wrapper = mock_bin / "claude"
-    claude_wrapper.write_text(
-        f'#!/bin/sh\nexec "{sys.executable}" "{mock_claude_py}" "$@"\n'
-    )
+    claude_wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{mock_claude_py}" "$@"\n')
     claude_wrapper.chmod(claude_wrapper.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv("PATH", f"{mock_bin}{os.pathsep}{os.environ['PATH']}")
 
@@ -67,15 +68,22 @@ def fresh_dir(tmp_path: Path, integration_env: Path):
 
 def _init_args(project_root: Path, description: str = "A mock project", **kw) -> Any:
     return argparse.Namespace(
-        description=description, output=project_root / "spec.json",
-        model="haiku", project_root=project_root, **kw,
+        description=description,
+        output=project_root / "spec.json",
+        model="haiku",
+        project_root=project_root,
+        **kw,
     )
 
 
 def _run_args(project_root: Path, **kw) -> Any:
     base = dict(
-        spec_file=None, project_root=project_root, concurrency=1,
-        max_retries=1, model=None, max_turns=10,
+        spec_file=None,
+        project_root=project_root,
+        concurrency=1,
+        max_retries=1,
+        model=None,
+        max_turns=10,
     )
     base.update(kw)
     return argparse.Namespace(**base)
@@ -83,8 +91,12 @@ def _run_args(project_root: Path, **kw) -> Any:
 
 def _plan_args(project_root: Path, spec_file: Path, **kw) -> Any:
     base = dict(
-        spec_file=spec_file, project_root=project_root, playground=False,
-        scaffold=False, generate_docs=False, fresh=False,
+        spec_file=spec_file,
+        project_root=project_root,
+        playground=False,
+        scaffold=False,
+        generate_docs=False,
+        fresh=False,
     )
     base.update(kw)
     return argparse.Namespace(**base)
@@ -100,7 +112,11 @@ def _tasks(project_root: Path) -> dict[str, dict]:
 
 def _git(args: list[str], cwd: Path) -> str:
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True,
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
 
 
@@ -112,6 +128,7 @@ def _assert_no_worktrees(project_root: Path) -> None:
     wt_dir = worktrees_dir(project_root)
     remaining = list(wt_dir.iterdir()) if wt_dir.exists() else []
     assert remaining == [], f"Worktrees should be cleaned up, found: {remaining}"
+
 
 # ──────────────────────────── Tests ────────────────────────────
 
@@ -162,7 +179,8 @@ class TestNewProject:
         assert {t["status"] for t in _tasks(fresh_dir).values()} == {"completed"}
 
     def test_scaffolds_left_untracked_are_refused_before_any_agent_runs(
-        self, integration_env: Path,
+        self,
+        integration_env: Path,
     ) -> None:
         """Opting into scaffolds and not committing them is caught up front.
 
@@ -195,17 +213,26 @@ class TestFailurePaths:
     """Error handling through the real launcher, verifier and merger."""
 
     def test_verification_failure_retries_then_fails_and_cascades(
-        self, integration_env: Path,
+        self,
+        integration_env: Path,
     ) -> None:
         project_root = integration_env
         spec = {
-            "project_name": "failing", "max_concurrency": 1,
+            "project_name": "failing",
+            "max_concurrency": 1,
             "tasks": [
-                {"id": "setup", "description": "Create setup",
-                 "output_files": ["setup.txt"],
-                 "verification": "echo BOOM >&2; false"},
-                {"id": "child", "description": "Depends on setup",
-                 "dependencies": ["setup"], "output_files": ["child.txt"]},
+                {
+                    "id": "setup",
+                    "description": "Create setup",
+                    "output_files": ["setup.txt"],
+                    "verification": "echo BOOM >&2; false",
+                },
+                {
+                    "id": "child",
+                    "description": "Depends on setup",
+                    "dependencies": ["setup"],
+                    "output_files": ["child.txt"],
+                },
             ],
         }
         spec_file = project_root / "spec.json"
@@ -232,8 +259,9 @@ class TestFailurePaths:
         project_root = integration_env
         spec = {
             "project_name": "giving-up",
-            "tasks": [{"id": "hard", "description": "mock:fail this one",
-                       "output_files": ["hard.txt"]}],
+            "tasks": [
+                {"id": "hard", "description": "mock:fail this one", "output_files": ["hard.txt"]}
+            ],
         }
         spec_file = project_root / "spec.json"
         spec_file.write_text(json.dumps(spec))
@@ -299,8 +327,13 @@ class TestExistingProject:
         project_root = integration_env
         spec = {
             "project_name": "brownfield",
-            "tasks": [{"id": "rewrite-readme", "description": "Rewrite the README",
-                       "output_files": ["README.md"]}],
+            "tasks": [
+                {
+                    "id": "rewrite-readme",
+                    "description": "Rewrite the README",
+                    "output_files": ["README.md"],
+                }
+            ],
         }
         spec_file = project_root / "spec.json"
         spec_file.write_text(json.dumps(spec))

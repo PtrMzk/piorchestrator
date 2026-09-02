@@ -10,11 +10,13 @@ from pathlib import Path
 # session. Everything else — notably CLAUDE_CONFIG_DIR and
 # CLAUDE_CODE_OAUTH_TOKEN — carries authentication and must survive: stripping
 # the whole CLAUDE* prefix makes the child start logged out.
-NESTED_SESSION_ENV_VARS = frozenset({
-    "CLAUDECODE",
-    "CLAUDE_CODE_ENTRYPOINT",
-    "CLAUDE_CODE_SSE_PORT",
-})
+NESTED_SESSION_ENV_VARS = frozenset(
+    {
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_SSE_PORT",
+    }
+)
 
 
 def agent_env() -> dict[str, str]:
@@ -68,9 +70,14 @@ STATUS_FAILED = "failed"
 STATUS_CANCELLED = "cancelled"
 STATUS_DECOMPOSED = "decomposed"
 
-TERMINAL_STATUSES = frozenset({
-    STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED, STATUS_DECOMPOSED,
-})
+TERMINAL_STATUSES = frozenset(
+    {
+        STATUS_COMPLETED,
+        STATUS_FAILED,
+        STATUS_CANCELLED,
+        STATUS_DECOMPOSED,
+    }
+)
 
 # Task sources
 SOURCE_SPEC = "spec"

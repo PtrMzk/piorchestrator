@@ -90,7 +90,8 @@ def run_verification(
         timed_out = True
         logger.warning(
             "Verification command timed out after %.0fs, killing: %s",
-            timeout, command,
+            timeout,
+            command,
         )
         procs.kill_group(proc)
         stdout, stderr = proc.communicate()
@@ -114,11 +115,12 @@ def run_verification(
         return VerificationOutcome(
             ok=False,
             detail=f"timed out after {timeout:.0f}s "
-                   f"(last output: {_tail(stderr) or _tail(stdout) or 'none'})",
+            f"(last output: {_tail(stderr) or _tail(stdout) or 'none'})",
         )
     if proc.returncode == 0:
         return VerificationOutcome(ok=True)
 
     return VerificationOutcome(
-        ok=False, detail=_tail(stderr) or _tail(stdout) or "(no output)",
+        ok=False,
+        detail=_tail(stderr) or _tail(stdout) or "(no output)",
     )

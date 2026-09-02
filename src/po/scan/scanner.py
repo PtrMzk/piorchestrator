@@ -53,7 +53,9 @@ Guidelines:
 
 
 def _invoke_scan_agent(
-    prompt: str, model: str, project_root: Path,
+    prompt: str,
+    model: str,
+    project_root: Path,
 ) -> str:
     """Call the Claude CLI synchronously to scan the codebase.
 
@@ -62,11 +64,15 @@ def _invoke_scan_agent(
     env = agent_env()
     cmd = [
         "claude",
-        "-p", prompt,
+        "-p",
+        prompt,
         "--verbose",
-        "--output-format", "stream-json",
-        "--model", model,
-        "--permission-mode", "bypassPermissions",
+        "--output-format",
+        "stream-json",
+        "--model",
+        model,
+        "--permission-mode",
+        "bypassPermissions",
     ]
 
     log_dir = ensure_logs_dir(project_root)

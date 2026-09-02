@@ -11,7 +11,9 @@ from po.spec.schema import ProjectSpec, TaskSpec
 
 class TestSqliteTaskStore:
     def test_save_spec_and_get_project(
-        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+        self,
+        store: SqliteTaskStore,
+        sample_spec: ProjectSpec,
     ) -> None:
         store.save_spec(sample_spec)
         project = store.get_project()
@@ -20,7 +22,9 @@ class TestSqliteTaskStore:
         assert project["max_concurrency"] == 2
 
     def test_clear_discards_everything(
-        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+        self,
+        store: SqliteTaskStore,
+        sample_spec: ProjectSpec,
     ) -> None:
         store.save_spec(sample_spec)
         store.set_completed("task-a", cost_usd=0.1, duration_ms=1, agent_result="x")
@@ -29,7 +33,9 @@ class TestSqliteTaskStore:
         assert store.get_all_tasks() == []
 
     def test_save_spec_persists_tasks(
-        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+        self,
+        store: SqliteTaskStore,
+        sample_spec: ProjectSpec,
     ) -> None:
         store.save_spec(sample_spec)
         tasks = store.get_all_tasks()
@@ -80,14 +86,18 @@ class TestSqliteTaskStore:
         assert task["error_message"] == "Boom"
 
     def test_get_ready_task_ids_initial(
-        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+        self,
+        store: SqliteTaskStore,
+        sample_spec: ProjectSpec,
     ) -> None:
         store.save_spec(sample_spec)
         ready = store.get_ready_task_ids()
         assert ready == ["task-a"]
 
     def test_get_ready_task_ids_after_completion(
-        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+        self,
+        store: SqliteTaskStore,
+        sample_spec: ProjectSpec,
     ) -> None:
         store.save_spec(sample_spec)
         store.set_running("task-a", "/tmp", "po/task-a")
@@ -97,7 +107,9 @@ class TestSqliteTaskStore:
         assert ready == ["task-c", "task-b"]
 
     def test_get_ready_task_ids_after_all_deps(
-        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+        self,
+        store: SqliteTaskStore,
+        sample_spec: ProjectSpec,
     ) -> None:
         store.save_spec(sample_spec)
         for tid in ["task-a", "task-b", "task-c"]:
@@ -124,7 +136,9 @@ class TestSqliteTaskStore:
         assert task["worktree_path"] is None
 
     def test_reset_only_failed_or_cancelled(
-        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+        self,
+        store: SqliteTaskStore,
+        sample_spec: ProjectSpec,
     ) -> None:
         store.save_spec(sample_spec)
         store.set_running("task-a", "/tmp", "po/task-a")
@@ -165,7 +179,9 @@ class TestSqliteTaskStore:
 
 class TestSetupCommandPersistence:
     def test_setup_survives_a_spec_round_trip(
-        self, store: SqliteTaskStore, sample_spec: ProjectSpec,
+        self,
+        store: SqliteTaskStore,
+        sample_spec: ProjectSpec,
     ) -> None:
         sample_spec.setup = "npm ci"
         store.save_spec(sample_spec)
@@ -180,7 +196,5 @@ class TestSetupCommandPersistence:
         conn.close()
 
         migrated = init_db(db_path)
-        columns = {
-            row[1] for row in migrated.execute("PRAGMA table_info(project)")
-        }
+        columns = {row[1] for row in migrated.execute("PRAGMA table_info(project)")}
         assert "setup" in columns

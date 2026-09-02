@@ -24,8 +24,11 @@ class MergeStrategy(Protocol):
     """Protocol for merging task branches into main."""
 
     async def merge(
-        self, branch: str, task_id: str,
-        verification: str, project_root: Path,
+        self,
+        branch: str,
+        task_id: str,
+        verification: str,
+        project_root: Path,
     ) -> MergeResult: ...
 
 
@@ -75,12 +78,14 @@ class RebaseMerger:
 
         for fallback in ("main", "master"):
             verify = self._run_git(
-                ["rev-parse", "--verify", f"refs/heads/{fallback}"], project_root,
+                ["rev-parse", "--verify", f"refs/heads/{fallback}"],
+                project_root,
             )
             if verify.returncode == 0:
                 logger.warning(
                     "HEAD is %s, not a usable base branch; falling back to '%s'",
-                    f"'{candidate}'" if candidate else "unreadable", fallback,
+                    f"'{candidate}'" if candidate else "unreadable",
+                    fallback,
                 )
                 self._base_branch = fallback
                 return self._base_branch
@@ -96,9 +101,13 @@ class RebaseMerger:
 
     def _merge_in_progress(self, project_root: Path) -> bool:
         """True if a `git merge` has actually started (MERGE_HEAD exists)."""
-        return self._run_git(
-            ["rev-parse", "--verify", "-q", "MERGE_HEAD"], project_root,
-        ).returncode == 0
+        return (
+            self._run_git(
+                ["rev-parse", "--verify", "-q", "MERGE_HEAD"],
+                project_root,
+            ).returncode
+            == 0
+        )
 
     def _confirm_merged(
         self,
@@ -116,14 +125,18 @@ class RebaseMerger:
         `git merge-base --is-ancestor` is the ground truth.
         """
         check = self._run_git(
-            ["merge-base", "--is-ancestor", branch, base], project_root,
+            ["merge-base", "--is-ancestor", branch, base],
+            project_root,
         )
         if check.returncode == 0:
             return MergeResult(
-                success=True, needed_agent_resolution=needed_agent_resolution,
+                success=True,
+                needed_agent_resolution=needed_agent_resolution,
             )
         logger.error(
-            "Merge of %s reported success but %s does not contain it", branch, base,
+            "Merge of %s reported success but %s does not contain it",
+            branch,
+            base,
         )
         return MergeResult(
             success=False,
@@ -155,7 +168,10 @@ class RebaseMerger:
         finally:
             procs.unregister(proc)
         return subprocess.CompletedProcess(
-            proc.args, proc.returncode, stdout, stderr,
+            proc.args,
+            proc.returncode,
+            stdout,
+            stderr,
         )
 
     async def merge(
@@ -188,7 +204,9 @@ class RebaseMerger:
         logger.debug("Running verification for %s: %s", task_id, verification)
         log_dir = ensure_logs_dir(project_root)
         outcome = run_verification(
-            verification, project_root, log_dir / f"verify-{task_id}.log",
+            verification,
+            project_root,
+            log_dir / f"verify-{task_id}.log",
         )
         if outcome.ok:
             return None
@@ -227,9 +245,7 @@ class RebaseMerger:
             stale_path = git_dir / stale_dir
             if stale_path.exists():
                 shutil.rmtree(stale_path)
-        merge_head = self._run_git(
-            ["rev-parse", "--verify", "MERGE_HEAD"], project_root
-        )
+        merge_head = self._run_git(["rev-parse", "--verify", "MERGE_HEAD"], project_root)
         if merge_head.returncode == 0:
             self._run_git(["merge", "--abort"], project_root)
 
@@ -249,7 +265,8 @@ class RebaseMerger:
             # Abort the failed rebase
             logger.info(
                 "Rebase failed for %s (stderr: %s), attempting agent merge",
-                task_id, result.stderr.strip(),
+                task_id,
+                result.stderr.strip(),
             )
             self._run_git(["rebase", "--abort"], project_root)
             # Try merge agent resolution
@@ -339,21 +356,25 @@ class RebaseMerger:
                 self._run_git(["merge", "--abort"], project_root)
                 return MergeResult(
                     success=False,
-                    error_message=(
-                        f"Merge agent could not resolve conflicts for task '{task_id}'"
-                    ),
+                    error_message=(f"Merge agent could not resolve conflicts for task '{task_id}'"),
                     needed_agent_resolution=True,
                 )
 
         # Run verification
         fail = self._run_verification(
-            verification, task_id, project_root, after_agent=True,
+            verification,
+            task_id,
+            project_root,
+            after_agent=True,
         )
         if fail:
             return fail
 
         return self._confirm_merged(
-            branch, base, project_root, needed_agent_resolution=True,
+            branch,
+            base,
+            project_root,
+            needed_agent_resolution=True,
         )
 
     def _invoke_merge_agent(
@@ -378,7 +399,8 @@ class RebaseMerger:
                 # Nothing to resolve because nothing was merged. Committing
                 # here would create an empty commit and claim success.
                 logger.warning(
-                    "Merge agent for %s invoked with no merge in progress", task_id,
+                    "Merge agent for %s invoked with no merge in progress",
+                    task_id,
                 )
                 return False
             # Merge started and git resolved everything itself — just commit
@@ -406,11 +428,15 @@ class RebaseMerger:
 
         cmd = [
             "claude",
-            "-p", prompt,
+            "-p",
+            prompt,
             "--verbose",
-            "--output-format", "stream-json",
-            "--max-turns", "30",
-            "--permission-mode", "bypassPermissions",
+            "--output-format",
+            "stream-json",
+            "--max-turns",
+            "30",
+            "--permission-mode",
+            "bypassPermissions",
         ]
 
         log_dir = ensure_logs_dir(project_root)
@@ -473,12 +499,12 @@ class RebaseMerger:
             return False
 
         if proc.returncode != 0:
-            stderr_text = (
-                b"".join(stderr_chunks).decode("utf-8", errors="replace").strip()
-            )
+            stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace").strip()
             logger.warning(
                 "Merge agent for %s exited with code %d: %s",
-                task_id, proc.returncode, stderr_text or "(no stderr)",
+                task_id,
+                proc.returncode,
+                stderr_text or "(no stderr)",
             )
             return False
 

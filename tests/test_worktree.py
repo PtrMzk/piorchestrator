@@ -118,15 +118,22 @@ class TestGitWorktreeManager:
         project = tmp_path / "empty-repo"
         project.mkdir()
         subprocess.run(
-            ["git", "init"], cwd=project, capture_output=True, check=True,
+            ["git", "init"],
+            cwd=project,
+            capture_output=True,
+            check=True,
         )
         subprocess.run(
             ["git", "config", "user.email", "test@test.com"],
-            cwd=project, capture_output=True, check=True,
+            cwd=project,
+            capture_output=True,
+            check=True,
         )
         subprocess.run(
             ["git", "config", "user.name", "Test"],
-            cwd=project, capture_output=True, check=True,
+            cwd=project,
+            capture_output=True,
+            check=True,
         )
         mgr = GitWorktreeManager()
         info = mgr.create("task-1", project)

@@ -55,12 +55,14 @@ class ScriptedAgentRunner:
         max_budget_usd: float | None = None,
     ) -> AgentResult:
         """Execute the next script for this task_id."""
-        self.calls.append({
-            "task_id": task_id,
-            "prompt": prompt,
-            "worktree_path": worktree_path,
-            "model": model,
-        })
+        self.calls.append(
+            {
+                "task_id": task_id,
+                "prompt": prompt,
+                "worktree_path": worktree_path,
+                "model": model,
+            }
+        )
 
         script = self._pop_script(task_id)
 
@@ -127,7 +129,10 @@ class ScriptedAgentRunner:
         return AgentScript()
 
     def _write_log(
-        self, task_id: str, script: AgentScript, project_root: Path,
+        self,
+        task_id: str,
+        script: AgentScript,
+        project_root: Path,
     ) -> None:
         """Write JSONL log entries for this task."""
         log_file = logs_dir(project_root) / f"{task_id}.jsonl"

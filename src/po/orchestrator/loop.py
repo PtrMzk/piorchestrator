@@ -96,10 +96,15 @@ class OrchestratorLoop:
             return
         self._git(["add", "--", ".gitignore"])
         # Pathspec form: commit only .gitignore, never whatever else is staged.
-        self._git([
-            "commit", "-m", "Add .gitignore for po state and build artifacts",
-            "--", ".gitignore",
-        ])
+        self._git(
+            [
+                "commit",
+                "-m",
+                "Add .gitignore for po state and build artifacts",
+                "--",
+                ".gitignore",
+            ]
+        )
 
     def _git(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -144,6 +149,7 @@ class OrchestratorLoop:
             logger.info("Force shutdown requested")
             procs.shutdown()
             import os
+
             os._exit(1)
         else:
             logger.info(
@@ -203,12 +209,12 @@ class OrchestratorLoop:
                     if batch_outputs.intersection(files):
                         continue  # Skip — overlaps with this batch
                     batch_outputs.update(files)
-                self._running_tasks[task_id] = asyncio.create_task(
-                    self._run_task(task_id)
-                )
+                self._running_tasks[task_id] = asyncio.create_task(self._run_task(task_id))
                 logger.debug(
                     "Launched task %s (slot %d/%d)",
-                    task_id, len(self._running_tasks), self.max_concurrency,
+                    task_id,
+                    len(self._running_tasks),
+                    self.max_concurrency,
                 )
                 self._emit("task_launched", task_id)
                 launched += 1
@@ -361,7 +367,8 @@ class OrchestratorLoop:
             model = escalate_model(base_model, current_attempt)
             if model != base_model:
                 self._emit(
-                    "model_escalated", task_id,
+                    "model_escalated",
+                    task_id,
                     f"{base_model} → {model}",
                 )
         result = await self.agent_runner.run(
@@ -399,13 +406,13 @@ class OrchestratorLoop:
         if result.success:
             # Run verification in the worktree before merging so the agent
             # can retry with a clear error if verification fails.
-            verification = (
-                str(task["verification"]) if task["verification"] else ""
-            )
+            verification = str(task["verification"]) if task["verification"] else ""
             worktree_path = str(task["worktree_path"]) if task["worktree_path"] else ""
             if verification and worktree_path:
                 preverify_fail = await self._run_preverify(
-                    verification, result.task_id, Path(worktree_path),
+                    verification,
+                    result.task_id,
+                    Path(worktree_path),
                 )
                 if self._shutting_down:
                     self._abandon_for_shutdown(result.task_id)
@@ -416,7 +423,8 @@ class OrchestratorLoop:
                         self.store.set_error_message(result.task_id, preverify_fail)
                         self.store.set_status(result.task_id, STATUS_PENDING)
                         self._emit(
-                            "task_retrying", result.task_id,
+                            "task_retrying",
+                            result.task_id,
                             f"pre-merge verification failed, attempt {attempt}/{self.max_retries}",
                         )
                     else:
@@ -445,9 +453,7 @@ class OrchestratorLoop:
 
             # Try to merge
             branch = str(task["branch_name"])
-            verification = (
-                str(task["verification"]) if task["verification"] else ""
-            )
+            verification = str(task["verification"]) if task["verification"] else ""
             merge_result: MergeResult = await self.merger.merge(
                 branch=branch,
                 task_id=result.task_id,
@@ -474,7 +480,8 @@ class OrchestratorLoop:
                     num_turns=result.num_turns,
                 )
                 self._emit(
-                    "task_completed", result.task_id,
+                    "task_completed",
+                    result.task_id,
                     _format_result_detail(result),
                 )
             else:
@@ -488,7 +495,8 @@ class OrchestratorLoop:
                     self.store.set_error_message(result.task_id, err)
                     self.store.set_status(result.task_id, STATUS_PENDING)
                     self._emit(
-                        "task_retrying", result.task_id,
+                        "task_retrying",
+                        result.task_id,
                         f"merge failed, attempt {attempt}/{self.max_retries}",
                     )
                 else:
@@ -514,8 +522,7 @@ class OrchestratorLoop:
                 parent_task = self.store.get_task(result.task_id)
                 parent_deps: list[str] = (
                     json.loads(parent_task["dependencies"])
-                    if parent_task
-                    and isinstance(parent_task["dependencies"], str)
+                    if parent_task and isinstance(parent_task["dependencies"], str)
                     else []
                 )
                 for subtask in result.subtasks:
@@ -525,13 +532,15 @@ class OrchestratorLoop:
                     # Subtasks inherit parent's dependencies
                     subtask.dependencies = parent_deps
                     self.store.add_runtime_task(
-                        subtask, parent_task_id=result.task_id,
+                        subtask,
+                        parent_task_id=result.task_id,
                     )
                 # Mark parent as decomposed — don't retry it
                 self.store.set_status(result.task_id, STATUS_DECOMPOSED)
                 self.worktree_mgr.remove(result.task_id, self.project_root)
                 self._emit(
-                    "task_decomposed", result.task_id,
+                    "task_decomposed",
+                    result.task_id,
                     f"{len(result.subtasks)} subtasks",
                 )
                 return
@@ -550,7 +559,8 @@ class OrchestratorLoop:
                 # Clean up worktree for retry
                 self.worktree_mgr.remove(result.task_id, self.project_root)
                 self._emit(
-                    "task_retrying", result.task_id,
+                    "task_retrying",
+                    result.task_id,
                     f"attempt {attempt}/{self.max_retries}",
                 )
             else:
@@ -603,12 +613,16 @@ class OrchestratorLoop:
 
         logger.warning(
             "Setup command failed for %s (continuing anyway): %s",
-            task_id, outcome.detail,
+            task_id,
+            outcome.detail,
         )
         self._emit("task_setup_failed", task_id, _first_line(outcome.detail))
 
     async def _run_preverify(
-        self, verification: str, task_id: str, worktree_path: Path,
+        self,
+        verification: str,
+        task_id: str,
+        worktree_path: Path,
     ) -> str | None:
         """Run verification command in the worktree before merging.
 
@@ -616,7 +630,9 @@ class OrchestratorLoop:
         Logs output to .po/logs/preverify-{task_id}.log.
         """
         logger.debug(
-            "Running pre-merge verification for %s: %s", task_id, verification,
+            "Running pre-merge verification for %s: %s",
+            task_id,
+            verification,
         )
         log_file = ensure_logs_dir(self.project_root) / f"preverify-{task_id}.log"
         outcome = await asyncio.get_event_loop().run_in_executor(
@@ -634,7 +650,8 @@ class OrchestratorLoop:
         cancelled_count = self.store.cancel_dependents(task_id)
         if cancelled_count > 0:
             self._emit(
-                "dependents_cancelled", task_id,
+                "dependents_cancelled",
+                task_id,
                 f"{cancelled_count} task(s)",
             )
 
