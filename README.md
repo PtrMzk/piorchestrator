@@ -67,7 +67,7 @@ Useful flags:
 ```bash
 po run --concurrency 2       # limit how many agents run at once
 po run --model opus          # use one model for every task
-po run --max-retries 3       # allow more attempts per task
+po run --max-retries 5       # more attempts per task (default 3)
 ```
 
 ## Commands

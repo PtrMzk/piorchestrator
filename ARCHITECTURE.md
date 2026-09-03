@@ -237,7 +237,7 @@ verification, priority, model, max_budget_usd, tags[]
 - **Output file overlap filtering**: serializes tasks that touch the same files while parallelizing everything else
 - **Dynamic decomposition**: agents can break tasks into subtasks at runtime by writing `.po-subtasks.json`
 - **Merge conflict auto-resolution**: a separate Claude agent resolves rebase conflicts if they occur
-- **Retry with state preservation**: failed task branches are kept so retry attempts can build on partial progress
+- **Retry with state preservation**: failed task branches are kept so retry attempts can build on partial progress. `config.py:DEFAULT_MAX_RETRIES` (3) is the default for both `po run --max-retries` and `OrchestratorLoop(max_retries=...)`; a task gets that many retries after its first attempt before it is marked failed
 - **Model escalation on retries**: when tasks retry, the model is automatically escalated up the ladder (haiku → sonnet → opus) to increase success probability; `--model` override disables escalation
 - **Default model resolution**: `config.py:DEFAULT_MODEL` is the single source of truth. `spec/schema.py` reads it for both `TaskSpec.model` and `ProjectSpec.default_model`, so a spec's `default_model` applies to every task that omits its own `"model"` key, and an explicit per-task `"model"` always wins
 - **macOS sleep prevention**: `caffeinate` is spawned during orchestration to prevent the machine from sleeping

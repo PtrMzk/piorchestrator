@@ -16,6 +16,7 @@ from po.agent.launcher import AgentRunner, ClaudeCodeRunner
 from po.agent.prompt_builder import build_prompt
 from po.config import (
     DEFAULT_MAX_CONCURRENCY,
+    DEFAULT_MAX_RETRIES,
     DEFAULT_MAX_TURNS,
     STATUS_DECOMPOSED,
     STATUS_PENDING,
@@ -50,7 +51,7 @@ class OrchestratorLoop:
         global_context: str = "",
         global_context_files: list[str] | None = None,
         setup: str = "",
-        max_retries: int = 1,
+        max_retries: int = DEFAULT_MAX_RETRIES,
         on_event: EventCallback | None = None,
         model_override: str | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,

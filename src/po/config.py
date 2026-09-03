@@ -49,6 +49,10 @@ DEFAULT_MAX_BUDGET_USD = 2.0
 # Default max turns for agent
 DEFAULT_MAX_TURNS = 50
 
+# Default retries per task after its first attempt. Enough to walk the whole
+# MODEL_LADDER from any starting model, with one extra attempt at the top.
+DEFAULT_MAX_RETRIES = 3
+
 # Hard timeout for a task's verification command, in seconds. Generous enough
 # for a real test suite, short enough that a command which never exits (a dev
 # server named as `verification`) cannot wedge the run overnight.

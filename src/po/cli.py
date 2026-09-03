@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from po.config import (
+    DEFAULT_MAX_RETRIES,
     DEFAULT_MAX_TURNS,
     TERMINAL_STATUSES,
     ensure_gitignore,
@@ -154,8 +155,8 @@ def main() -> None:
     run_parser.add_argument(
         "--max-retries",
         type=int,
-        default=1,
-        help="Max retries per task (default: 1)",
+        default=DEFAULT_MAX_RETRIES,
+        help=f"Max retries per task (default: {DEFAULT_MAX_RETRIES})",
     )
     run_parser.add_argument(
         "--model",
