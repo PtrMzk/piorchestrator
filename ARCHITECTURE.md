@@ -77,7 +77,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
    - `asyncio.wait(..., timeout=5.0, return_when=FIRST_COMPLETED)` — wakes when any agent finishes
 
 **Code walkthrough — running a single task (`_run_task`):**
-1. `worktree/manager.py:GitWorktreeManager.create()` — prunes stale worktrees, ensures git repo, checks if branch `po/{task_id}` exists (retry reuses branch), otherwise `git worktree add -b po/{task_id} .po/worktrees/{task_id}/ HEAD`
+1. `worktree/manager.py:GitWorktreeManager.create()` — reuses a previous attempt's worktree if `git worktree list` still shows `.po/worktrees/{task_id}/` attached to `po/{task_id}` (uncommitted changes included); else re-attaches a fresh worktree if the branch survives (e.g. after `detach()` for a merge); else cuts `po/{task_id}` from HEAD. A directory git no longer recognises as a worktree — left behind by an agent's orphaned children after a crash — is force-removed and, if that no-ops, deleted outright with `shutil.rmtree`, so a stale non-empty directory can never turn `git worktree add` into an exit-128 failure on retry
 2. `store.set_running()` — marks DB status=running, increments attempt counter, records branch/worktree path
 3. Reads `context_files` (prefers worktree copy for retry continuity, falls back to project root) + `global_context_files`
 4. `agent/prompt_builder.py:build_prompt()` — assembles markdown prompt: task description, previous error (for retries), global context, reference file contents, expected outputs, verification command, TDD rules, subtask/failure instructions
@@ -100,7 +100,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
   5. On merge failure with retries left: keeps branch, sets task back to pending
   6. On merge failure (or pre-merge verification failure) with no retries left: marks failed but **keeps the branch** — it holds work that passed verification. The error message ends in `[branch po/{task_id} kept]`; `po reset` builds on it, `po clean` reaps it
 - **Subtask path:** namespaces IDs as `{parent}/{subtask}`, inherits parent deps, `store.add_runtime_task()`, marks parent `decomposed`
-- **Failure path** (the agent itself failed): if retries left → `store.set_status(pending)`, cleans worktree; else → `store.set_failed()`, removes worktree and branch, `store.cancel_dependents()` (BFS cascade)
+- **Failure path** (the agent itself failed): the worktree and branch are left in place either way — an agent killed by the OOM killer or a turn/budget limit usually left real progress behind. If retries left → `store.set_status(pending)`; else → `store.set_failed()` (error message ends in `[branch po/{task_id} kept]`), `store.cancel_dependents()` (BFS cascade). `po reset` + `po run` resumes from the kept worktree; `po clean` is the explicit way to discard it
 
 ### 4. `po status` / `po cost` / `po logs <id>` — Monitoring
 - **status**: table of all tasks with their state, cost, and any error messages

@@ -273,7 +273,8 @@ class TestFailurePaths:
         assert task["status"] == "failed"
         assert "mock agent gave up" in str(task["error_message"])
         assert "hard.txt" not in _tracked(project_root)
-        _assert_no_worktrees(project_root)
+        # Kept, not deleted — `po reset` should be able to resume from it.
+        assert (worktrees_dir(project_root) / "hard").exists()
 
     def test_uncommitted_changes_are_refused_and_survive(self, integration_env: Path) -> None:
         """The merge's `checkout -f` would discard these; po must not get that far."""

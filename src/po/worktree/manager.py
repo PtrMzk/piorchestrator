@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,6 +71,28 @@ def ensure_git_repo(project_root: Path) -> None:
         )
 
 
+def _git(args: list[str], cwd: Path, check: bool = True) -> int:
+    """Run a git command; on failure raise RuntimeError carrying git's stderr.
+
+    subprocess.CalledProcessError only says "exit status 128", which for
+    `worktree add` could be any of a dozen things. The message is what the
+    user needs to see.
+    """
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if check and result.returncode != 0:
+        detail = (
+            result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
+        )
+        raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
+    return result.returncode
+
+
 class GitWorktreeManager:
     """Manage git worktrees for task isolation."""
 
@@ -82,74 +105,72 @@ class GitWorktreeManager:
         return worktrees_dir(project_root) / task_id
 
     def create(self, task_id: str, project_root: Path) -> WorktreeInfo:
-        """Create a new worktree branching from current main tip.
+        """Return a worktree for the task, reusing a previous attempt's if it is intact.
 
-        Cleans up stale branches/worktrees from previous runs before creating.
-        Raises subprocess.CalledProcessError on git failures.
+        A failed attempt leaves its worktree and branch in place so a retry, or
+        `po reset` + `po run`, continues from that work instead of starting
+        over. Three cases, in order:
+
+        1. The directory is still a registered worktree on `po/<task>`: reuse
+           it as-is, uncommitted changes included.
+        2. Only the branch survives (the worktree was detached for a merge, or
+           the directory is stale): re-attach a fresh worktree to the branch.
+        3. Neither exists: cut a new branch from HEAD.
+
+        A stale directory is one git no longer recognises — typically left by
+        an agent's orphaned children writing into it after the worktree was
+        removed. It is deleted; anything of value is on the branch.
+
+        Raises RuntimeError with git's stderr on failure.
         """
         branch = self._branch_name(task_id)
         wt_path = self._worktree_path(task_id, project_root)
         wt_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Clean up stale worktree directory from a previous run
-        if wt_path.exists():
-            subprocess.run(
-                ["git", "worktree", "remove", "--force", str(wt_path)],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        # Prune worktree bookkeeping for paths that no longer exist
-        subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
         # Ensure a git repo exists with at least one commit (needed for worktrees)
         self._ensure_git_repo(project_root)
 
-        # Check if the branch already exists (e.g. kept from a previous retry)
-        branch_check = subprocess.run(
-            ["git", "rev-parse", "--verify", branch],
+        if self._attached_branch(wt_path, project_root) == branch:
+            return WorktreeInfo(task_id=task_id, path=wt_path, branch=branch)
+
+        if wt_path.exists():
+            _git(["worktree", "remove", "--force", str(wt_path)], project_root, check=False)
+            if wt_path.exists():
+                shutil.rmtree(wt_path, ignore_errors=True)
+        # Prune worktree bookkeeping for paths that no longer exist
+        _git(["worktree", "prune"], project_root, check=False)
+
+        if _git(["rev-parse", "--verify", "--quiet", branch], project_root, check=False) == 0:
+            # Reuse existing branch — reattach worktree to it
+            _git(["worktree", "add", str(wt_path), branch], project_root)
+        else:
+            # Fresh branch from current HEAD
+            _git(["worktree", "add", "-b", branch, str(wt_path), "HEAD"], project_root)
+
+        return WorktreeInfo(task_id=task_id, path=wt_path, branch=branch)
+
+    @staticmethod
+    def _attached_branch(wt_path: Path, project_root: Path) -> str | None:
+        """The branch checked out at `wt_path` if git lists it as a worktree, else None."""
+        if not wt_path.is_dir():
+            return None
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
             cwd=project_root,
             capture_output=True,
             text=True,
             check=False,
         )
-
-        if branch_check.returncode == 0:
-            # Reuse existing branch — reattach worktree to it
-            subprocess.run(
-                ["git", "worktree", "add", str(wt_path), branch],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-        else:
-            # Fresh branch from current HEAD
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            base_commit = result.stdout.strip()
-
-            subprocess.run(
-                ["git", "worktree", "add", "-b", branch, str(wt_path), base_commit],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-        return WorktreeInfo(task_id=task_id, path=wt_path, branch=branch)
+        if result.returncode != 0:
+            return None
+        target = wt_path.resolve()
+        current: Path | None = None
+        for line in result.stdout.splitlines():
+            if line.startswith("worktree "):
+                current = Path(line[len("worktree ") :]).resolve()
+            elif line.startswith("branch ") and current == target:
+                return line[len("branch ") :].removeprefix("refs/heads/")
+        return None
 
     def detach(self, task_id: str, project_root: Path) -> None:
         """Remove the worktree directory but keep the branch.

@@ -551,21 +551,22 @@ class OrchestratorLoop:
             if task["status"] == STATUS_PENDING:
                 self.store.increment_attempt(result.task_id)
                 task = self.store.get_task(result.task_id) or task
+            # The worktree and branch stay in place either way. An agent that
+            # ran out of turns, memory or budget usually left real progress
+            # behind, committed or not; the retry — or `po reset` + `po run`
+            # — resumes from it, and `po clean` is the explicit way to discard.
             attempt = int(task["attempt"])
             if attempt <= self.max_retries:
                 err = result.error_message or "Agent failed"
                 self.store.set_error_message(result.task_id, err)
                 self.store.set_status(result.task_id, STATUS_PENDING)
-                # Clean up worktree for retry
-                self.worktree_mgr.remove(result.task_id, self.project_root)
                 self._emit(
                     "task_retrying",
                     result.task_id,
                     f"attempt {attempt}/{self.max_retries}",
                 )
             else:
-                err = result.error_message or "Agent failed"
-                self.worktree_mgr.remove(result.task_id, self.project_root)
+                err = _kept_branch(result.error_message or "Agent failed", task)
                 self.store.set_failed(
                     result.task_id,
                     error_message=err,

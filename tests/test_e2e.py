@@ -291,10 +291,9 @@ class TestE2E:
             assert task is not None
             assert task["status"] == "cancelled", f"{task_id} is {task['status']}"
 
-        # No worktrees left
+        # a's worktree is kept, not deleted — `po reset` should resume from it.
         wt_dir = worktrees_dir(project_root)
-        remaining = list(wt_dir.iterdir()) if wt_dir.exists() else []
-        assert remaining == [], f"Leftover worktrees: {remaining}"
+        assert (wt_dir / "a").exists()
 
     async def test_subtask_decomposition(self, e2e_env: tuple) -> None:
         """Agent decomposes a task into subtasks; subtasks run and complete."""
