@@ -53,7 +53,7 @@ Requires the [Claude Code CLI](https://claude.com/claude-code) (`claude`) instal
 logged in.
 
 ```bash
-uv tool install -e /path/to/piorchestrator
+uv tool install git+https://github.com/PtrMzk/piorchestrator
 
 mkdir todo-api && cd todo-api && git init
 po init "REST API for a todo list using TypeScript on Bun"   # review and approve the outline
@@ -115,6 +115,8 @@ directory you are comfortable handing over.
 ## Development
 
 ```bash
+git clone https://github.com/PtrMzk/piorchestrator && cd piorchestrator
+uv tool install -e .             # editable install: source changes take effect immediately
 uv sync                          # install dependencies
 uv run pytest                    # run tests
 uv run ruff check src tests      # lint
