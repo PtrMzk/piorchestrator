@@ -39,7 +39,7 @@ mypy_path = "src"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0",
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
     "mypy>=1.13",
