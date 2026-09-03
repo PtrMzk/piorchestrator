@@ -15,7 +15,7 @@
 in its own git worktree. Each task is verified before it is merged. Failed tasks are retried
 with a stronger model. You can stop the run at any point and resume it later.
 
-![po run in progress](docs/po-run.gif)
+![po run showing the live task tree](docs/po-screenshot.png)
 
 ## The problem
 
