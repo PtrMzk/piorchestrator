@@ -28,6 +28,7 @@ import signal
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,84 @@ def signal_group(pid: int, sig: signal.Signals) -> bool:
         # No process groups (Windows), or the process is already gone.
         return False
     return True
+
+
+def group_alive(pgid: int) -> bool:
+    """True if any process is still in the group, even if its leader has exited."""
+    try:
+        os.killpg(pgid, 0)
+    except (AttributeError, OSError, TypeError):
+        return False
+    return True
+
+
+def signal_pgid(pgid: int, sig: signal.Signals) -> bool:
+    """Signal a process group by id. False if it has no members left."""
+    try:
+        os.killpg(pgid, sig)
+    except (AttributeError, OSError, TypeError):
+        return False
+    return True
+
+
+def _pgrp_of(pid: int) -> int | None:
+    """Read a pid's process group from /proc. None if it can't be determined."""
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    # comm (field 2) is user-controlled and may contain spaces/parens; the
+    # kernel guarantees it is wrapped in the *last* ')' on the line, per
+    # proc(5). Fields after that are space-separated: state, ppid, pgrp, ...
+    after_comm = raw.rsplit(")", 1)
+    if len(after_comm) != 2:
+        return None
+    fields = after_comm[1].split()
+    try:
+        return int(fields[2])
+    except (IndexError, ValueError):
+        return None
+
+
+def group_has_marker(pgid: int, token: str) -> bool:
+    """True if a live process in `pgid` still carries our spawn marker.
+
+    Signalling a process group by its bare numeric id is unsafe once the
+    process we spawned may already have exited: the kernel is free to hand
+    that same number to an unrelated new session (notably a fresh SSH login —
+    sshd calls setsid() per connection, so its pgid equals its own pid). If we
+    then `killpg` that number believing it's still ours, we tear down whatever
+    that number now belongs to instead.
+
+    We close that gap by tagging every spawned group with a unique token in
+    its environment (inherited by every descendant) and refusing to signal
+    unless a live process in the target pgid still carries it. Best-effort:
+    Linux-only (needs /proc and read access to a process's own environ,
+    which is only available for processes we own). Elsewhere, or if
+    unreadable, this returns False — callers should treat that as "can't
+    confirm it's ours," not "definitely gone."
+    """
+    proc_root = Path("/proc")
+    if not proc_root.is_dir():
+        return False
+    marker = token.encode()
+    try:
+        entries = list(proc_root.iterdir())
+    except OSError:
+        return False
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if _pgrp_of(pid) != pgid:
+            continue
+        try:
+            environ = (entry / "environ").read_bytes()
+        except OSError:
+            continue
+        if marker in environ:
+            return True
+    return False
 
 
 def is_shutting_down() -> bool:

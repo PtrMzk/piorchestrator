@@ -11,6 +11,7 @@ import json
 import logging
 import signal
 import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -28,6 +29,14 @@ from po.spec.schema import TaskSpec
 
 logger = logging.getLogger(__name__)
 
+# Grace between SIGTERM and SIGKILL for processes an exited agent left behind.
+_ORPHAN_GRACE_S = 1.0
+
+# Injected into a spawned agent's environment (and inherited by everything it
+# spawns) so `_reap_orphans` can confirm a pgid is still ours before killing
+# it — see `procs.group_has_marker`.
+_GROUP_TOKEN_ENV_VAR = "PO_AGENT_GROUP_TOKEN"
+
 
 class AgentRunner(Protocol):
     """Protocol for running agents."""
@@ -42,6 +51,27 @@ class AgentRunner(Protocol):
         project_root: Path,
         max_budget_usd: float | None = None,
     ) -> AgentResult: ...
+
+
+async def _reap_orphans(pgid: int, task_id: str, group_token: str) -> None:
+    """Kill whatever the agent left running in its process group.
+
+    `claude` is the group leader; when it dies — killed by the OOM killer,
+    say — a test runner or dev server it started lives on, still writing into
+    a worktree the orchestrator is about to remove, and still holding the
+    memory that got the agent killed in the first place.
+
+    By the time we get here the leader's pid may already have been reaped and
+    handed to an unrelated process, so we only trust `pgid` if a live member
+    still carries `group_token` — see `procs.group_has_marker`.
+    """
+    if not procs.group_has_marker(pgid, group_token):
+        return
+    logger.warning("Agent for %s exited but left processes running; killing them", task_id)
+    procs.signal_pgid(pgid, signal.SIGTERM)
+    await asyncio.sleep(_ORPHAN_GRACE_S)
+    if procs.group_has_marker(pgid, group_token):
+        procs.signal_pgid(pgid, signal.SIGKILL)
 
 
 def _rotate_log(log_file: Path) -> None:
@@ -82,6 +112,8 @@ class ClaudeCodeRunner:
 
         # Drop nesting markers only — auth vars must survive (see agent_env)
         env = agent_env()
+        group_token = uuid.uuid4().hex
+        env[_GROUP_TOKEN_ENV_VAR] = group_token
 
         cmd = [
             "claude",
@@ -181,15 +213,20 @@ class ClaudeCodeRunner:
 
             await stderr_task
             await proc.wait()
+            await _reap_orphans(proc.pid, task_id, group_token)
         except asyncio.CancelledError:
-            # Shutdown requested — tear down the agent and everything it spawned
+            # Shutdown requested — tear down the agent and everything it spawned.
+            # Gate on proc.returncode (not just proc.pid) so we never signal a
+            # group by a pid that has, in this same instant, already exited
+            # and been reaped out from under us.
             logger.info("Terminating agent subprocess for task %s", task_id)
-            if procs.signal_group(proc.pid, signal.SIGTERM):
+            if proc.returncode is None and procs.signal_group(proc.pid, signal.SIGTERM):
                 # Give it a moment to exit cleanly, then kill
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=5.0)
                 except TimeoutError:
-                    procs.signal_group(proc.pid, signal.SIGKILL)
+                    if proc.returncode is None:
+                        procs.signal_group(proc.pid, signal.SIGKILL)
                     await proc.wait()
             stderr_task.cancel()
             raise

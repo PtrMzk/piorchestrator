@@ -8,6 +8,7 @@ import json
 import os
 import signal
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -377,6 +378,37 @@ class TestAgentCancellation:
             return False
         return True
 
+    @staticmethod
+    async def _wait_until(predicate: Callable[[], bool], timeout: float = 5.0) -> bool:
+        """Poll `predicate` on a bounded, deterministic schedule instead of a fixed loop count."""
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            if predicate():
+                return True
+            await asyncio.sleep(0.05)
+        return predicate()
+
+    @staticmethod
+    def _pid_from_file(path: Path) -> int | None:
+        if not path.exists():
+            return None
+        with contextlib.suppress(ValueError):
+            return int(path.read_text().strip())
+        return None
+
+    @staticmethod
+    def _force_kill_group(pgid: int | None) -> None:
+        """Test-owned cleanup: kill directly, independent of the code under test.
+
+        A failing assertion must never leak a real process — we don't rely on
+        `ClaudeCodeRunner`'s own cleanup for that, since that's the very thing
+        under test.
+        """
+        if pgid is None:
+            return
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(pgid, signal.SIGKILL)
+
     @pytest.mark.asyncio
     async def test_cancel_kills_the_agents_children(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -384,13 +416,18 @@ class TestAgentCancellation:
         """A tool call the agent started (`npm run dev`) must not outlive it."""
         worktree = tmp_path / "wt"
         worktree.mkdir()
-        pid_file = tmp_path / "child.pid"
+        leader_pid_file = tmp_path / "leader.pid"
+        child_pid_file = tmp_path / "child.pid"
+        # Bounded well above the runner's 5s SIGTERM grace, but short enough
+        # that a failed assertion below can't leak a process for long even
+        # before the `finally` cleanup runs.
         self._stub_claude(
             tmp_path / "bin",
             "import subprocess, time\n"
-            f"p = subprocess.Popen([{sys.executable!r}, '-c', 'import time; time.sleep(120)'])\n"
-            f"open({str(pid_file)!r}, 'w').write(str(p.pid))\n"
-            "time.sleep(120)\n",
+            f"open({str(leader_pid_file)!r}, 'w').write(str(os.getpid()))\n"
+            f"p = subprocess.Popen([{sys.executable!r}, '-c', 'import time; time.sleep(15)'])\n"
+            f"open({str(child_pid_file)!r}, 'w').write(str(p.pid))\n"
+            "time.sleep(15)\n",
         )
         monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
 
@@ -403,24 +440,20 @@ class TestAgentCancellation:
                 project_root=tmp_path,
             )
         )
-        # Wait for the agent to spawn its child before cancelling.
-        for _ in range(100):
-            if pid_file.exists() and pid_file.read_text().strip():
-                break
-            await asyncio.sleep(0.05)
-        grandchild = int(pid_file.read_text())
+        try:
+            spawned = await self._wait_until(lambda: bool(self._pid_from_file(child_pid_file)))
+            assert spawned, "agent never spawned its child"
+            grandchild = self._pid_from_file(child_pid_file)
+            assert grandchild is not None
 
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
 
-        for _ in range(100):
-            if not self._alive(grandchild):
-                return
-            await asyncio.sleep(0.05)
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(grandchild, signal.SIGKILL)
-        raise AssertionError(f"agent's child {grandchild} survived cancellation")
+            died = await self._wait_until(lambda: not self._alive(grandchild))
+            assert died, f"agent's child {grandchild} survived cancellation"
+        finally:
+            self._force_kill_group(self._pid_from_file(leader_pid_file))
 
     @pytest.mark.asyncio
     async def test_agent_pid_is_untracked_after_a_normal_run(

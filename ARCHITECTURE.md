@@ -81,7 +81,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
 2. `store.set_running()` — marks DB status=running, increments attempt counter, records branch/worktree path
 3. Reads `context_files` (prefers worktree copy for retry continuity, falls back to project root) + `global_context_files`
 4. `agent/prompt_builder.py:build_prompt()` — assembles markdown prompt: task description, previous error (for retries), global context, reference file contents, expected outputs, verification command, TDD rules, subtask/failure instructions
-5. `agent/launcher.py:ClaudeCodeRunner.run()` — spawns `claude -p <prompt> --output-format stream-json --model <model> --max-turns <N> --permission-mode bypassPermissions` in the worktree dir. Streams stdout to `.po/logs/{task_id}.jsonl` (injecting timestamps). Drains stderr concurrently. On `CancelledError`, sends SIGTERM → wait 5s → SIGKILL. Checks for `.po-subtasks.json` and `.po-failure.json` in worktree after exit. Returns `AgentResult`
+5. `agent/launcher.py:ClaudeCodeRunner.run()` — spawns `claude -p <prompt> --output-format stream-json --model <model> --max-turns <N> --permission-mode bypassPermissions` in the worktree dir, as the leader of its own process group, with a unique per-run token in its environment (`PO_AGENT_GROUP_TOKEN`, inherited by everything it spawns). Streams stdout to `.po/logs/{task_id}.jsonl` (injecting timestamps). Drains stderr concurrently. On `CancelledError`, sends SIGTERM → wait 5s → SIGKILL, gated on `proc.returncode is None` so it never signals a pid that's already been reaped. After a normal exit, `_reap_orphans()` sweeps the process group for anything the agent left running (e.g. a `npm run dev` a tool call started) — but only signals it if `procs.group_has_marker()` finds the run's token still alive in that group, since the OS is free to hand a reaped pid's number to an unrelated new session (a fresh SSH login, notably) and blindly `killpg`-ing it would tear that down instead. Checks for `.po-subtasks.json` and `.po-failure.json` in worktree after exit. Returns `AgentResult`
 
 **Code walkthrough — processing results (`_process_result`):**
 - **Success path:**
@@ -152,7 +152,7 @@ Removes orphaned git worktrees that weren't properly cleaned up, and the `po/*` 
 | **Worktree** | `worktree/manager.py` | Git worktree lifecycle (create, detach, remove), branch management |
 | **Pre-flight** | `preflight.py` | Environment and repository checks before `po run` starts: `claude` on PATH, git identity, clean tracked tree, no untracked files at output paths |
 | **Verification** | `verify.py` | Runs a task's verification command through a shell, under a hard timeout, in its own process group |
-| **Process registry** | `procs.py` | Tracks live child process groups so shutdown can kill executor-thread work |
+| **Process registry** | `procs.py` | Tracks live child process groups so shutdown can kill executor-thread work; `group_has_marker()` guards pgid-based kills against PID/PGID reuse |
 | **Scan** | `scan/scanner.py` | Codebase documentation generation via Claude CLI |
 | **Display** | `display/live.py`, `display/status.py`, `display/tools.py` | Rich terminal UI with 4Hz refresh, dependency-layered tree, live action tailing, tool summaries |
 
