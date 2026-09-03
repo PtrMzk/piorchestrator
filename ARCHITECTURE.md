@@ -70,7 +70,7 @@ Key design: tasks that write to the same files are serialized, while tasks with 
 2. Installs SIGINT/SIGTERM handlers → `_request_shutdown()`. Cancelling asyncio tasks stops the agents, whose subprocesses are awaited by those tasks — but **not** a merge or verification command, which block an executor thread that cancellation cannot reach, and which `asyncio.run()` then joins on the way out. So the handler also calls `procs.shutdown()` to kill those process groups directly. Interrupted tasks are parked back to `pending` (`_abandon_for_shutdown`) rather than recorded as failures. Second signal kills whatever registered since — the merge's own abort commands — then `os._exit`
 3. `_loop()` runs in a `while True`:
    - `_collect_completed()` — iterates `_running_tasks` dict, pops `.done()` asyncio Tasks, extracts `AgentResult` (catching `CancelledError` + exceptions)
-   - `store.get_ready_task_ids()` — SQL query using `json_each()` to find pending tasks whose every dependency is completed (`db/queries.py:242-258`)
+   - `store.get_ready_task_ids()` — SQL query using `json_each()` to find pending tasks whose every dependency is completed (`db/queries.py:291-307`)
    - `_filter_output_overlap()` — computes the set of `output_files` for all running tasks, excludes ready tasks that intersect. Within a batch, tracks `batch_outputs` to prevent intra-iteration overlap too
    - For each task up to `slots` remaining: `asyncio.create_task(self._run_task(task_id))`
    - Deadlock check: if no running, no ready, but still non-terminal → `RuntimeError`
