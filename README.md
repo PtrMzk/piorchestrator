@@ -13,7 +13,7 @@
 **`po` takes a project description, breaks it into tasks with dependencies, and runs
 [Claude Code](https://claude.com/claude-code) agents on them in parallel.** Each agent works
 in its own git worktree. Each task is verified before it is merged. Failed tasks are retried
-with a stronger model. You can stop the run at any point and resume it later.
+with a stronger model. Finished work stays merged, so a stopped run can be picked up again.
 
 ![po run showing the live task tree](docs/po-screenshot.png)
 
@@ -39,8 +39,9 @@ tests. Progress is tracked in a database, so a stopped run can be resumed.
   after its verification command passes. Conflicts are handed to a merge agent.
 - **Retries use a stronger model.** The first attempt runs on the task's default model. Each
   retry moves up the ladder (`haiku → sonnet → opus`).
-- **Runs are resumable.** State is stored in SQLite. Ctrl-C stops every agent and rolls back
-  any merge in progress. Running `po run` again continues from each task's existing branch.
+- **Runs are resumable.** State is stored in SQLite and merged tasks stay merged. Ctrl-C
+  stops every agent and rolls back any merge in progress. `po reset` followed by `po run`
+  picks up the remaining tasks, each from its existing branch.
 - **You can see what is happening.** A live task tree shows status and token usage per task.
   `po status` and `po logs <task-id>` give the details.
 - **The spec is generated for you.** `po init` writes an outline from a plain-English
@@ -86,14 +87,15 @@ run `po reset` and then `po run`. Each task resumes from the branch its agent al
 
 1. **Plan.** `po init` asks Claude for an outline, lets you revise it, then produces a spec:
    tasks with descriptions, dependencies, output files, a verification command, and a model.
-2. **Layer.** `po` computes execution layers from the dependency graph and runs each layer's
-   tasks concurrently, up to the spec's `max_concurrency`.
-3. **Run.** Each task gets a fresh worktree on branch `po/<task-id>`, the project's `setup`
-   command (for example `npm ci` or `uv sync`), and a Claude Code agent with the task
-   description, its context files, and the error from the previous attempt if this is a retry.
-4. **Verify and merge.** The agent's commits are verified in the worktree, rebased onto
+   It then shows the execution plan, with tasks grouped into layers by their dependencies.
+2. **Run.** `po run` works through the layers, running each layer's tasks concurrently up to
+   the spec's `max_concurrency`. Each task gets a fresh worktree on branch `po/<task-id>`,
+   the project's `setup` command (for example `npm ci` or `uv sync`), and a Claude Code agent
+   with the task description, its context files, and the error from the previous attempt if
+   this is a retry.
+3. **Verify and merge.** The agent's commits are verified in the worktree, rebased onto
    `main`, verified again, and fast-forward merged. A merge agent handles conflicts.
-5. **Retry or cancel.** Failures retry with an escalated model. When retries run out, the task
+4. **Retry or cancel.** Failures retry with an escalated model. When retries run out, the task
    is marked failed and its dependents are cancelled. The worktree is kept for `po reset`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for a code-level walkthrough of every command.
