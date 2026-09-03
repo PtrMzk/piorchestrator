@@ -13,6 +13,13 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           python-version: "3.13"
+      # po creates real git commits (e.g. _prepare_repo's .gitignore commit)
+      # regardless of mocking, and several tests exercise that directly. A
+      # fresh runner has no global git identity, so `git commit` fails with
+      # "Author identity unknown" before a single test's assertions run.
+      - run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
       - run: uv sync
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
