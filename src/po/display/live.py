@@ -13,6 +13,7 @@ from rich.tree import Tree
 
 from po.config import logs_dir
 from po.db.queries import SqliteTaskStore
+from po.display.status import token_summary
 from po.display.tools import tool_summary
 
 # Status → (symbol, style)
@@ -66,6 +67,9 @@ class LiveDisplay:
                 "error_message": task.get("error_message"),
                 "dependencies": deps,
                 "attempt": int(task.get("attempt") or 0),
+                "token_summary": token_summary(
+                    task.get("input_tokens"), task.get("output_tokens"), task.get("num_turns")
+                ),
             }
 
     def start(self) -> None:
@@ -228,13 +232,9 @@ class LiveDisplay:
             if ts:
                 label.append(f"  ({ts})", style="dim italic")
         elif status == "completed":
-            token_summary = task.get("token_summary")
-            if token_summary:
-                label.append(f"  {token_summary}", style="dim green")
-            else:
-                cost = task.get("cost_usd")
-                if cost is not None:
-                    label.append(f"  ${float(cost):.4f}", style="dim green")
+            summary = task.get("token_summary")
+            if summary:
+                label.append(f"  {summary}", style="dim green")
         elif status == "failed":
             error = task.get("error_message")
             if error:

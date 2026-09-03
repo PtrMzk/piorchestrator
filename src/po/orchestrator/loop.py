@@ -25,6 +25,7 @@ from po.config import (
     escalate_model,
 )
 from po.db.queries import AgentResult, SqliteTaskStore
+from po.display.status import token_summary
 from po.orchestrator.merge import MergeResult, MergeStrategy, RebaseMerger
 from po.verify import run_verification
 from po.worktree.manager import GitWorktreeManager, WorktreeProvider, ensure_git_repo
@@ -676,20 +677,4 @@ def _format_result_detail(result: AgentResult) -> str:
 
     Example: "12.5k in / 3.2k out / 25 turns"
     """
-    parts: list[str] = []
-    if result.input_tokens:
-        parts.append(_format_tokens(result.input_tokens) + " in")
-    if result.output_tokens:
-        parts.append(_format_tokens(result.output_tokens) + " out")
-    if result.num_turns:
-        parts.append(f"{result.num_turns} turns")
-    return " / ".join(parts)
-
-
-def _format_tokens(n: int) -> str:
-    """Format token count compactly: 1234 → '1.2k', 1234567 → '1.2M'."""
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M"
-    if n >= 1_000:
-        return f"{n / 1_000:.1f}k"
-    return str(n)
+    return token_summary(result.input_tokens, result.output_tokens, result.num_turns)

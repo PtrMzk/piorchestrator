@@ -99,6 +99,20 @@ def format_cost_summary(tasks: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def token_summary(
+    input_tokens: int | None, output_tokens: int | None, num_turns: int | None
+) -> str:
+    """'12.5k in / 3.2k out / 25 turns' — empty when nothing is known."""
+    parts: list[str] = []
+    if input_tokens:
+        parts.append(f"{_fmt_tokens(input_tokens)} in")
+    if output_tokens:
+        parts.append(f"{_fmt_tokens(output_tokens)} out")
+    if num_turns:
+        parts.append(f"{num_turns} turns")
+    return " / ".join(parts)
+
+
 def _fmt_tokens(n: int | None) -> str:
     """Format token count compactly."""
     if n is None:
